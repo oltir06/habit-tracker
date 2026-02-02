@@ -37,6 +37,17 @@ app.get('/habits', (req, res) => {
   res.json(habits);
 });
 
+// GET /habits/:id - Get a single habit
+app.get('/habits/:id', (req, res) => {
+  const habit = habits.find(h => h.id === parseInt(req.params.id));
+
+  if (!habit) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  res.json(habit);
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Habit Tracker API running on http://localhost:${PORT}`);
