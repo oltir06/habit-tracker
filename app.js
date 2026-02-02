@@ -65,6 +65,18 @@ app.put('/habits/:id', (req, res) => {
   res.json(habit);
 });
 
+// DELETE /habits/:id - Delete a habit
+app.delete('/habits/:id', (req, res) => {
+  const index = habits.findIndex(h => h.id === parseInt(req.params.id));
+
+  if (index === -1) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  habits.splice(index, 1);
+  res.status(204).send();
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Habit Tracker API running on http://localhost:${PORT}`);
