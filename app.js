@@ -32,6 +32,11 @@ app.post('/habits', (req, res) => {
   res.status(201).json(habit);
 });
 
+// GET /habits - List all habits
+app.get('/habits', (req, res) => {
+  res.json(habits);
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Habit Tracker API running on http://localhost:${PORT}`);
