@@ -48,6 +48,23 @@ app.get('/habits/:id', (req, res) => {
   res.json(habit);
 });
 
+// PUT /habits/:id - Update a habit
+app.put('/habits/:id', (req, res) => {
+  const habit = habits.find(h => h.id === parseInt(req.params.id));
+
+  if (!habit) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  const { name, description, frequency } = req.body;
+
+  if (name) habit.name = name;
+  if (description !== undefined) habit.description = description;
+  if (frequency) habit.frequency = frequency;
+
+  res.json(habit);
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Habit Tracker API running on http://localhost:${PORT}`);
