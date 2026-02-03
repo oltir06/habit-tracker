@@ -220,34 +220,6 @@ app.get('/habits/:id/checkins', (req, res) => {
   res.json(habitCheckIns);
 });
 
-// POST /debug/checkin - Manually create a check-in (FOR TESTING ONLY)
-app.post('/debug/checkin', (req, res) => {
-  const { habitId, date } = req.body;
-  const habit = habits.find(h => h.id === habitId);
-
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
-  }
-
-  const existingCheckIn = checkIns.find(
-    c => c.habitId === habitId && c.date === date
-  );
-
-  if (existingCheckIn) {
-    return res.status(400).json({ error: 'Already checked in on this date' });
-  }
-
-  const checkIn = {
-    id: checkInIdCounter++,
-    habitId,
-    date,
-    createdAt: new Date().toISOString()
-  };
-
-  checkIns.push(checkIn);
-  res.status(201).json(checkIn);
-});
-
 // GET /habits/:id/streak - Get streak info
 app.get('/habits/:id/streak', (req, res) => {
   const habitId = parseInt(req.params.id);
