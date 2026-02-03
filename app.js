@@ -12,6 +12,10 @@ app.use(express.json());
 let habits = [];
 let nextId = 1;
 
+// Check-in storage
+let checkIns = [];
+let checkInIdCounter = 1;
+
 // POST /habits - Create a new habit
 app.post('/habits', (req, res) => {
   const { name, description, frequency } = req.body;
@@ -75,6 +79,59 @@ app.delete('/habits/:id', (req, res) => {
 
   habits.splice(index, 1);
   res.status(204).send();
+});
+
+// POST /habits/:id/checkin - Mark habit done today
+app.post('/habits/:id/checkin', (req, res) => {
+  const habitId = parseInt(req.params.id);
+  const habit = habits.find(h => h.id === habitId);
+
+  if (!habit) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  // Get today's date in YYYY-MM-DD format
+  const today = new Date().toISOString().split('T')[0];
+
+  // Check if already checked in today
+  const existingCheckIn = checkIns.find(
+    c => c.habitId === habitId && c.date === today
+  );
+
+  if (existingCheckIn) {
+    return res.status(400).json({ error: 'Already checked in today' });
+  }
+
+  // Create new check-in
+  const checkIn = {
+    id: checkInIdCounter++,
+    habitId: habitId,
+    date: today,
+    createdAt: new Date().toISOString()
+  };
+
+  checkIns.push(checkIn);
+  res.status(201).json({
+    message: 'Check-in successful!',
+    checkIn: checkIn
+  });
+});
+
+// GET /habits/:id/checkins - Get check-in history for a habit
+app.get('/habits/:id/checkins', (req, res) => {
+  const habitId = parseInt(req.params.id);
+  const habit = habits.find(h => h.id === habitId);
+
+  if (!habit) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  // Get all check-ins for this habit, sorted by date (newest first)
+  const habitCheckIns = checkIns
+    .filter(c => c.habitId === habitId)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  res.json(habitCheckIns);
 });
 
 // Start server
