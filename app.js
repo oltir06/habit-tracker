@@ -248,6 +248,24 @@ app.post('/debug/checkin', (req, res) => {
   res.status(201).json(checkIn);
 });
 
+// GET /habits/:id/streak - Get streak info
+app.get('/habits/:id/streak', (req, res) => {
+  const habitId = parseInt(req.params.id);
+  const habit = habits.find(h => h.id === habitId);
+
+  if (!habit) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  const streakInfo = calculateStreak(habitId);
+
+  res.json({
+    habitId: habitId,
+    currentStreak: streakInfo.currentStreak,
+    longestStreak: streakInfo.longestStreak
+  });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Habit Tracker API running on http://localhost:${PORT}`);
