@@ -18,16 +18,23 @@ let checkInIdCounter = 1;
 
 // POST /habits - Create a new habit
 app.post('/habits', (req, res) => {
-  const { name, description, frequency } = req.body;
+  const { name, description, type, frequency } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
+  }
+
+  // Validate type if provided
+  const validTypes = ['build', 'break'];
+  if (type && !validTypes.includes(type)) {
+    return res.status(400).json({ error: 'Type must be "build" or "break"' });
   }
 
   const habit = {
     id: nextId++,
     name,
     description: description || '',
+    type: type || 'build',
     frequency: frequency || 'daily',
     createdAt: new Date().toISOString()
   };
@@ -60,10 +67,17 @@ app.put('/habits/:id', (req, res) => {
     return res.status(404).json({ error: 'Habit not found' });
   }
 
-  const { name, description, frequency } = req.body;
+  const { name, description, type, frequency } = req.body;
+
+  // Validate type if provided
+  const validTypes = ['build', 'break'];
+  if (type && !validTypes.includes(type)) {
+    return res.status(400).json({ error: 'Type must be "build" or "break"' });
+  }
 
   if (name) habit.name = name;
   if (description !== undefined) habit.description = description;
+  if (type) habit.type = type;
   if (frequency) habit.frequency = frequency;
 
   res.json(habit);
@@ -71,11 +85,15 @@ app.put('/habits/:id', (req, res) => {
 
 // DELETE /habits/:id - Delete a habit
 app.delete('/habits/:id', (req, res) => {
-  const index = habits.findIndex(h => h.id === parseInt(req.params.id));
+  const habitId = parseInt(req.params.id);
+  const index = habits.findIndex(h => h.id === habitId);
 
   if (index === -1) {
     return res.status(404).json({ error: 'Habit not found' });
   }
+
+  // Remove orphaned check-ins for this habit
+  checkIns = checkIns.filter(c => c.habitId !== habitId);
 
   habits.splice(index, 1);
   res.status(204).send();
