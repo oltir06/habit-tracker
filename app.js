@@ -116,6 +116,21 @@ app.get('/habits', (req, res) => {
   res.json(habits);
 });
 
+// GET /habits/stats - Get overview stats for all habits
+app.get('/habits/stats', (req, res) => {
+  const stats = habits.map(habit => {
+    const streakInfo = calculateStreak(habit.id);
+    return {
+      habitId: habit.id,
+      name: habit.name,
+      currentStreak: streakInfo.currentStreak,
+      longestStreak: streakInfo.longestStreak
+    };
+  });
+
+  res.json(stats);
+});
+
 // GET /habits/:id - Get a single habit
 app.get('/habits/:id', (req, res) => {
   const habit = habits.find(h => h.id === parseInt(req.params.id));
@@ -235,6 +250,62 @@ app.get('/habits/:id/streak', (req, res) => {
     habitId: habitId,
     currentStreak: streakInfo.currentStreak,
     longestStreak: streakInfo.longestStreak
+  });
+});
+
+// GET /habits/:id/stats - Get full stats for a habit
+app.get('/habits/:id/stats', (req, res) => {
+  const habitId = parseInt(req.params.id);
+  const habit = habits.find(h => h.id === habitId);
+
+  if (!habit) {
+    return res.status(404).json({ error: 'Habit not found' });
+  }
+
+  const streakInfo = calculateStreak(habitId);
+
+  // Get all check-ins for this habit
+  const habitCheckIns = checkIns.filter(c => c.habitId === habitId);
+  const totalCheckIns = habitCheckIns.length;
+
+  let firstCheckIn = null;
+  let lastCheckIn = null;
+  let completionRate = 0;
+
+  if (totalCheckIns > 0) {
+    // Sort oldest first to get dates
+    const sortedCheckIns = [...habitCheckIns].sort((a, b) => new Date(a.date) - new Date(b.date));
+    firstCheckIn = sortedCheckIns[0].date;
+    lastCheckIn = sortedCheckIns[sortedCheckIns.length - 1].date;
+
+    // Calculate completion rate
+    const today = new Date();
+    const firstCheckInDate = new Date(firstCheckIn);
+
+    // Reset time components to ensure day calculation is accurate relative to dates
+    today.setHours(0, 0, 0, 0);
+    // Normalize both dates to midnight for accurate day difference calculation
+    firstCheckInDate.setHours(0, 0, 0, 0);
+    const diffTime = Math.abs(today - firstCheckInDate);
+    const daysSinceFirst = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include first day
+
+    completionRate = totalCheckIns / daysSinceFirst;
+    // Cap at 1.0 just in case future-proofing issues or timezone weirdness
+    if (completionRate > 1) completionRate = 1;
+    // Round to 2 decimal places
+    completionRate = Math.round(completionRate * 100) / 100;
+  }
+
+  res.json({
+    habitId: habit.id,
+    name: habit.name,
+    type: habit.type,
+    totalCheckIns,
+    currentStreak: streakInfo.currentStreak,
+    longestStreak: streakInfo.longestStreak,
+    completionRate,
+    firstCheckIn,
+    lastCheckIn
   });
 });
 
