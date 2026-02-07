@@ -3,89 +3,87 @@ const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Database connection
+const db = require('./db');
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// In-memory storage (temporary until we add database)
-let habits = [];
-let nextId = 1;
-
-// Check-in storage
-let checkIns = [];
-let checkInIdCounter = 1;
-
 // Helper: Calculate streak info
-const calculateStreak = (habitId) => {
-  const habitCheckIns = checkIns
-    .filter(c => c.habitId === habitId)
-    .sort((a, b) => new Date(b.date) - new Date(a.date)); // Newest first
+const calculateStreak = async (habitId) => {
+  try {
+    const result = await db.query(
+      'SELECT date FROM check_ins WHERE habit_id = $1 ORDER BY date DESC',
+      [habitId]
+    );
 
-  if (habitCheckIns.length === 0) {
+    const habitCheckIns = result.rows;
+
+    if (habitCheckIns.length === 0) {
+      return { currentStreak: 0, longestStreak: 0 };
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    let currentStreak = 0;
+    let checkDate = new Date(today);
+
+    // Calculate current streak
+    const todayCheckIn = habitCheckIns.find(c => c.date === today);
+
+    if (todayCheckIn) {
+      currentStreak = 1;
+      checkDate.setDate(checkDate.getDate() - 1);
+
+      while (true) {
+        const dateStr = checkDate.toISOString().split('T')[0];
+        const hasCheckIn = habitCheckIns.find(c => c.date === dateStr);
+
+        if (hasCheckIn) {
+          currentStreak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Calculate longest streak
+    let longestStreak = 0;
+    let currentRun = 0;
+
+    const sortedCheckIns = [...habitCheckIns].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    if (sortedCheckIns.length > 0) {
+      currentRun = 1;
+      longestStreak = 1;
+
+      for (let i = 1; i < sortedCheckIns.length; i++) {
+        const prevDate = new Date(sortedCheckIns[i - 1].date);
+        const currDate = new Date(sortedCheckIns[i].date);
+
+        const diffTime = Math.abs(currDate - prevDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 1) {
+          currentRun++;
+        } else if (diffDays > 1) {
+          currentRun = 1;
+        }
+
+        longestStreak = Math.max(longestStreak, currentRun);
+      }
+    }
+
+    return { currentStreak, longestStreak };
+  } catch (error) {
+    console.error('Streak calculation error:', error);
     return { currentStreak: 0, longestStreak: 0 };
   }
-
-  const today = new Date().toISOString().split('T')[0];
-  let currentStreak = 0;
-  let checkDate = new Date(today);
-
-  // Calculate current streak
-  // Check if today is checked in
-  const todayCheckIn = habitCheckIns.find(c => c.date === today);
-
-  if (todayCheckIn) {
-    currentStreak = 1;
-    checkDate.setDate(checkDate.getDate() - 1); // Move to yesterday
-
-    // Check consecutive days backwards
-    while (true) {
-      const dateStr = checkDate.toISOString().split('T')[0];
-      const hasCheckIn = habitCheckIns.find(c => c.date === dateStr);
-
-      if (hasCheckIn) {
-        currentStreak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-  }
-
-  // Calculate longest streak
-  let longestStreak = 0;
-  let currentRun = 0;
-
-  // Sort oldest first for single pass calculation
-  const sortedCheckIns = [...habitCheckIns].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  if (sortedCheckIns.length > 0) {
-    currentRun = 1;
-    longestStreak = 1;
-
-    for (let i = 1; i < sortedCheckIns.length; i++) {
-      const prevDate = new Date(sortedCheckIns[i - 1].date);
-      const currDate = new Date(sortedCheckIns[i].date);
-
-      const diffTime = Math.abs(currDate - prevDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays === 1) {
-        currentRun++;
-      } else if (diffDays > 1) {
-        currentRun = 1;
-      }
-      // If diffDays === 0 (same day), do nothing (keep current run)
-
-      longestStreak = Math.max(longestStreak, currentRun);
-    }
-  }
-
-  return { currentStreak, longestStreak };
 };
 
 // POST /habits - Create a new habit
-app.post('/habits', (req, res) => {
+app.post('/habits', async (req, res) => {
   const { name, description, type, frequency } = req.body;
 
   if (!name) {
@@ -98,215 +96,283 @@ app.post('/habits', (req, res) => {
     return res.status(400).json({ error: 'Type must be "build" or "break"' });
   }
 
-  const habit = {
-    id: nextId++,
-    name,
-    description: description || '',
-    type: type || 'build',
-    frequency: frequency || 'daily',
-    createdAt: new Date().toISOString()
-  };
+  try {
+    const result = await db.query(
+      'INSERT INTO habits (name, description, type, frequency) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, description || '', type || 'build', frequency || 'daily']
+    );
 
-  habits.push(habit);
-  res.status(201).json(habit);
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to create habit' });
+  }
 });
 
-// GET /habits - List all habits
-app.get('/habits', (req, res) => {
-  res.json(habits);
+// GET /habits - Get all habits
+app.get('/habits', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM habits ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch habits' });
+  }
 });
 
 // GET /habits/stats - Get overview stats for all habits
-app.get('/habits/stats', (req, res) => {
-  const stats = habits.map(habit => {
-    const streakInfo = calculateStreak(habit.id);
-    return {
-      habitId: habit.id,
-      name: habit.name,
-      currentStreak: streakInfo.currentStreak,
-      longestStreak: streakInfo.longestStreak
-    };
-  });
+app.get('/habits/stats', async (req, res) => {
+  try {
+    const habitsResult = await db.query('SELECT * FROM habits');
 
-  res.json(stats);
+    const stats = await Promise.all(
+      habitsResult.rows.map(async (habit) => {
+        const streakInfo = await calculateStreak(habit.id);
+        return {
+          habitId: habit.id,
+          name: habit.name,
+          currentStreak: streakInfo.currentStreak,
+          longestStreak: streakInfo.longestStreak
+        };
+      })
+    );
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
 });
 
 // GET /habits/:id - Get a single habit
-app.get('/habits/:id', (req, res) => {
-  const habit = habits.find(h => h.id === parseInt(req.params.id));
+app.get('/habits/:id', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM habits WHERE id = $1', [req.params.id]);
 
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch habit' });
   }
-
-  res.json(habit);
 });
 
 // PUT /habits/:id - Update a habit
-app.put('/habits/:id', (req, res) => {
-  const habit = habits.find(h => h.id === parseInt(req.params.id));
-
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
-  }
-
+app.put('/habits/:id', async (req, res) => {
   const { name, description, type, frequency } = req.body;
 
-  // Validate type if provided
   const validTypes = ['build', 'break'];
   if (type && !validTypes.includes(type)) {
     return res.status(400).json({ error: 'Type must be "build" or "break"' });
   }
 
-  if (name) habit.name = name;
-  if (description !== undefined) habit.description = description;
-  if (type) habit.type = type;
-  if (frequency) habit.frequency = frequency;
+  try {
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
 
-  res.json(habit);
+    if (name) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(description);
+    }
+    if (type) {
+      updates.push(`type = $${paramCount++}`);
+      values.push(type);
+    }
+    if (frequency) {
+      updates.push(`frequency = $${paramCount++}`);
+      values.push(frequency);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    values.push(req.params.id);
+    const query = `UPDATE habits SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+
+    const result = await db.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to update habit' });
+  }
 });
 
 // DELETE /habits/:id - Delete a habit
-app.delete('/habits/:id', (req, res) => {
-  const habitId = parseInt(req.params.id);
-  const index = habits.findIndex(h => h.id === habitId);
+app.delete('/habits/:id', async (req, res) => {
+  try {
+    const result = await db.query('DELETE FROM habits WHERE id = $1 RETURNING id', [req.params.id]);
 
-  if (index === -1) {
-    return res.status(404).json({ error: 'Habit not found' });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+
+    // Check-ins are auto-deleted due to ON DELETE CASCADE
+    res.status(204).send();
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to delete habit' });
   }
-
-  // Remove orphaned check-ins for this habit
-  checkIns = checkIns.filter(c => c.habitId !== habitId);
-
-  habits.splice(index, 1);
-  res.status(204).send();
 });
 
 // POST /habits/:id/checkin - Mark habit done today
-app.post('/habits/:id/checkin', (req, res) => {
+app.post('/habits/:id/checkin', async (req, res) => {
   const habitId = parseInt(req.params.id);
-  const habit = habits.find(h => h.id === habitId);
 
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
+  try {
+    // Check if habit exists
+    const habitCheck = await db.query('SELECT id FROM habits WHERE id = $1', [habitId]);
+    if (habitCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+
+    // Get today's date in YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check for existing check-in
+    const existingCheckIn = await db.query(
+      'SELECT id FROM check_ins WHERE habit_id = $1 AND date = $2',
+      [habitId, today]
+    );
+
+    if (existingCheckIn.rows.length > 0) {
+      return res.status(400).json({ error: 'Already checked in today' });
+    }
+
+    // Create check-in
+    const result = await db.query(
+      'INSERT INTO check_ins (habit_id, date) VALUES ($1, $2) RETURNING *',
+      [habitId, today]
+    );
+
+    res.status(201).json({
+      message: 'Check-in successful!',
+      checkIn: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to check in' });
   }
-
-  // Get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split('T')[0];
-
-  // Check if already checked in today
-  const existingCheckIn = checkIns.find(
-    c => c.habitId === habitId && c.date === today
-  );
-
-  if (existingCheckIn) {
-    return res.status(400).json({ error: 'Already checked in today' });
-  }
-
-  // Create new check-in
-  const checkIn = {
-    id: checkInIdCounter++,
-    habitId: habitId,
-    date: today,
-    createdAt: new Date().toISOString()
-  };
-
-  checkIns.push(checkIn);
-  res.status(201).json({
-    message: 'Check-in successful!',
-    checkIn: checkIn
-  });
 });
 
 // GET /habits/:id/checkins - Get check-in history for a habit
-app.get('/habits/:id/checkins', (req, res) => {
+app.get('/habits/:id/checkins', async (req, res) => {
   const habitId = parseInt(req.params.id);
-  const habit = habits.find(h => h.id === habitId);
 
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
+  try {
+    // Check if habit exists
+    const habitCheck = await db.query('SELECT id FROM habits WHERE id = $1', [habitId]);
+    if (habitCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+
+    const result = await db.query(
+      'SELECT * FROM check_ins WHERE habit_id = $1 ORDER BY date DESC',
+      [habitId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch check-ins' });
   }
-
-  // Get all check-ins for this habit, sorted by date (newest first)
-  const habitCheckIns = checkIns
-    .filter(c => c.habitId === habitId)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  res.json(habitCheckIns);
 });
 
 // GET /habits/:id/streak - Get streak info
-app.get('/habits/:id/streak', (req, res) => {
+app.get('/habits/:id/streak', async (req, res) => {
   const habitId = parseInt(req.params.id);
-  const habit = habits.find(h => h.id === habitId);
 
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
+  try {
+    const habitCheck = await db.query('SELECT id FROM habits WHERE id = $1', [habitId]);
+    if (habitCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+
+    const streakInfo = await calculateStreak(habitId);
+
+    res.json({
+      habitId: habitId,
+      currentStreak: streakInfo.currentStreak,
+      longestStreak: streakInfo.longestStreak
+    });
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch streak' });
   }
-
-  const streakInfo = calculateStreak(habitId);
-
-  res.json({
-    habitId: habitId,
-    currentStreak: streakInfo.currentStreak,
-    longestStreak: streakInfo.longestStreak
-  });
 });
 
 // GET /habits/:id/stats - Get full stats for a habit
-app.get('/habits/:id/stats', (req, res) => {
+app.get('/habits/:id/stats', async (req, res) => {
   const habitId = parseInt(req.params.id);
-  const habit = habits.find(h => h.id === habitId);
 
-  if (!habit) {
-    return res.status(404).json({ error: 'Habit not found' });
+  try {
+    const habitResult = await db.query('SELECT * FROM habits WHERE id = $1', [habitId]);
+    if (habitResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+    const habit = habitResult.rows[0];
+
+    const streakInfo = await calculateStreak(habitId);
+
+    // Get all check-ins for this habit
+    const checkInsResult = await db.query(
+      "SELECT to_char(date, 'YYYY-MM-DD') as date FROM check_ins WHERE habit_id = $1 ORDER BY date ASC",
+      [habitId]
+    );
+    const habitCheckIns = checkInsResult.rows;
+    const totalCheckIns = habitCheckIns.length;
+
+    let firstCheckIn = null;
+    let lastCheckIn = null;
+    let completionRate = 0;
+
+    if (totalCheckIns > 0) {
+      firstCheckIn = habitCheckIns[0].date;
+      lastCheckIn = habitCheckIns[totalCheckIns - 1].date;
+
+      // Calculate completion rate
+      const today = new Date();
+      const firstCheckInDate = new Date(firstCheckIn);
+
+      today.setHours(0, 0, 0, 0);
+      firstCheckInDate.setHours(0, 0, 0, 0);
+      const diffTime = Math.abs(today - firstCheckInDate);
+      const daysSinceFirst = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+      completionRate = totalCheckIns / daysSinceFirst;
+      if (completionRate > 1) completionRate = 1;
+      completionRate = Math.round(completionRate * 100) / 100;
+    }
+
+    res.json({
+      habitId: habit.id,
+      name: habit.name,
+      type: habit.type,
+      totalCheckIns,
+      currentStreak: streakInfo.currentStreak,
+      longestStreak: streakInfo.longestStreak,
+      completionRate,
+      firstCheckIn,
+      lastCheckIn
+    });
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch habit stats' });
   }
-
-  const streakInfo = calculateStreak(habitId);
-
-  // Get all check-ins for this habit
-  const habitCheckIns = checkIns.filter(c => c.habitId === habitId);
-  const totalCheckIns = habitCheckIns.length;
-
-  let firstCheckIn = null;
-  let lastCheckIn = null;
-  let completionRate = 0;
-
-  if (totalCheckIns > 0) {
-    // Sort oldest first to get dates
-    const sortedCheckIns = [...habitCheckIns].sort((a, b) => new Date(a.date) - new Date(b.date));
-    firstCheckIn = sortedCheckIns[0].date;
-    lastCheckIn = sortedCheckIns[sortedCheckIns.length - 1].date;
-
-    // Calculate completion rate
-    const today = new Date();
-    const firstCheckInDate = new Date(firstCheckIn);
-
-    // Reset time components to ensure day calculation is accurate relative to dates
-    today.setHours(0, 0, 0, 0);
-    // Normalize both dates to midnight for accurate day difference calculation
-    firstCheckInDate.setHours(0, 0, 0, 0);
-    const diffTime = Math.abs(today - firstCheckInDate);
-    const daysSinceFirst = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include first day
-
-    completionRate = totalCheckIns / daysSinceFirst;
-    // Cap at 1.0 just in case future-proofing issues or timezone weirdness
-    if (completionRate > 1) completionRate = 1;
-    // Round to 2 decimal places
-    completionRate = Math.round(completionRate * 100) / 100;
-  }
-
-  res.json({
-    habitId: habit.id,
-    name: habit.name,
-    type: habit.type,
-    totalCheckIns,
-    currentStreak: streakInfo.currentStreak,
-    longestStreak: streakInfo.longestStreak,
-    completionRate,
-    firstCheckIn,
-    lastCheckIn
-  });
 });
 
 // Start server
