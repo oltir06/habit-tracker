@@ -10,76 +10,64 @@ const db = require('./db');
 app.use(cors());
 app.use(express.json());
 
-// Helper: Calculate streak info
-const calculateStreak = async (habitId) => {
-  try {
-    const result = await db.query(
-      'SELECT date FROM check_ins WHERE habit_id = $1 ORDER BY date DESC',
-      [habitId]
-    );
-
-    const habitCheckIns = result.rows;
-
-    if (habitCheckIns.length === 0) {
-      return { currentStreak: 0, longestStreak: 0 };
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    let currentStreak = 0;
-    let checkDate = new Date(today);
-
-    // Calculate current streak
-    const todayCheckIn = habitCheckIns.find(c => c.date === today);
-
-    if (todayCheckIn) {
-      currentStreak = 1;
-      checkDate.setDate(checkDate.getDate() - 1);
-
-      while (true) {
-        const dateStr = checkDate.toISOString().split('T')[0];
-        const hasCheckIn = habitCheckIns.find(c => c.date === dateStr);
-
-        if (hasCheckIn) {
-          currentStreak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-    }
-
-    // Calculate longest streak
-    let longestStreak = 0;
-    let currentRun = 0;
-
-    const sortedCheckIns = [...habitCheckIns].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    if (sortedCheckIns.length > 0) {
-      currentRun = 1;
-      longestStreak = 1;
-
-      for (let i = 1; i < sortedCheckIns.length; i++) {
-        const prevDate = new Date(sortedCheckIns[i - 1].date);
-        const currDate = new Date(sortedCheckIns[i].date);
-
-        const diffTime = Math.abs(currDate - prevDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 1) {
-          currentRun++;
-        } else if (diffDays > 1) {
-          currentRun = 1;
-        }
-
-        longestStreak = Math.max(longestStreak, currentRun);
-      }
-    }
-
-    return { currentStreak, longestStreak };
-  } catch (error) {
-    console.error('Streak calculation error:', error);
+// Helper: Calculate streak info (Pure function)
+const calculateStreak = (habitCheckIns) => {
+  if (!habitCheckIns || habitCheckIns.length === 0) {
     return { currentStreak: 0, longestStreak: 0 };
   }
+
+  const today = new Date().toISOString().split('T')[0];
+  let currentStreak = 0;
+  let checkDate = new Date(today);
+
+  // Calculate current streak
+  const todayCheckIn = habitCheckIns.find(c => c.date === today);
+
+  if (todayCheckIn) {
+    currentStreak = 1;
+    checkDate.setDate(checkDate.getDate() - 1); // Move to yesterday
+
+    while (true) {
+      const dateStr = checkDate.toISOString().split('T')[0];
+      const hasCheckIn = habitCheckIns.find(c => c.date === dateStr);
+
+      if (hasCheckIn) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Calculate longest streak
+  let longestStreak = 0;
+  let currentRun = 0;
+
+  const sortedCheckIns = [...habitCheckIns].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (sortedCheckIns.length > 0) {
+    currentRun = 1;
+    longestStreak = 1;
+
+    for (let i = 1; i < sortedCheckIns.length; i++) {
+      const prevDate = new Date(sortedCheckIns[i - 1].date);
+      const currDate = new Date(sortedCheckIns[i].date);
+
+      const diffTime = Math.abs(currDate - prevDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 1) {
+        currentRun++;
+      } else if (diffDays > 1) {
+        currentRun = 1;
+      }
+
+      longestStreak = Math.max(longestStreak, currentRun);
+    }
+  }
+
+  return { currentStreak, longestStreak };
 };
 
 // POST /habits - Create a new habit
@@ -121,26 +109,44 @@ app.get('/habits', async (req, res) => {
 });
 
 // GET /habits/stats - Get overview stats for all habits
+// GET /habits/stats - Get overview stats for all habits
 app.get('/habits/stats', async (req, res) => {
   try {
-    const habitsResult = await db.query('SELECT * FROM habits');
+    // 1. Fetch all habits
+    const habitsResult = await db.query('SELECT * FROM habits ORDER BY created_at DESC');
+    const habits = habitsResult.rows;
 
-    const stats = await Promise.all(
-      habitsResult.rows.map(async (habit) => {
-        const streakInfo = await calculateStreak(habit.id);
-        return {
-          habitId: habit.id,
-          name: habit.name,
-          currentStreak: streakInfo.currentStreak,
-          longestStreak: streakInfo.longestStreak
-        };
-      })
+    // 2. Fetch ALL check-ins needed for stats
+    const checkInsResult = await db.query(
+      "SELECT habit_id, to_char(date, 'YYYY-MM-DD') as date FROM check_ins ORDER BY date DESC"
     );
+    const allCheckIns = checkInsResult.rows;
+
+    // 3. Group check-ins by habit_id in memory
+    const checkInsByHabit = {};
+    allCheckIns.forEach(ci => {
+      if (!checkInsByHabit[ci.habit_id]) {
+        checkInsByHabit[ci.habit_id] = [];
+      }
+      checkInsByHabit[ci.habit_id].push(ci);
+    });
+
+    // 4. Calculate stats for each habit
+    const stats = habits.map((habit) => {
+      const habitCheckIns = checkInsByHabit[habit.id] || [];
+      const streakInfo = calculateStreak(habitCheckIns);
+      return {
+        habitId: habit.id,
+        name: habit.name,
+        currentStreak: streakInfo.currentStreak,
+        longestStreak: streakInfo.longestStreak
+      };
+    });
 
     res.json(stats);
   } catch (error) {
     console.error('Database error:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    res.status(500).json({ error: 'Failed to fetch habit stats' });
   }
 });
 
@@ -302,7 +308,13 @@ app.get('/habits/:id/streak', async (req, res) => {
       return res.status(404).json({ error: 'Habit not found' });
     }
 
-    const streakInfo = await calculateStreak(habitId);
+    const result = await db.query(
+      "SELECT to_char(date, 'YYYY-MM-DD') as date FROM check_ins WHERE habit_id = $1 ORDER BY date DESC",
+      [habitId]
+    );
+
+    const habitCheckIns = result.rows;
+    const streakInfo = calculateStreak(habitCheckIns);
 
     res.json({
       habitId: habitId,
@@ -326,16 +338,16 @@ app.get('/habits/:id/stats', async (req, res) => {
     }
     const habit = habitResult.rows[0];
 
-    const streakInfo = await calculateStreak(habitId);
-
     // Get all check-ins for this habit
     const checkInsResult = await db.query(
       "SELECT to_char(date, 'YYYY-MM-DD') as date FROM check_ins WHERE habit_id = $1 ORDER BY date ASC",
       [habitId]
     );
     const habitCheckIns = checkInsResult.rows;
-    const totalCheckIns = habitCheckIns.length;
 
+    const streakInfo = calculateStreak(habitCheckIns);
+
+    const totalCheckIns = habitCheckIns.length;
     let firstCheckIn = null;
     let lastCheckIn = null;
     let completionRate = 0;
