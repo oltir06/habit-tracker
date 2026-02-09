@@ -13,13 +13,14 @@ app.use(requestLogger); // Add request logging
 
 // Root endpoint
 app.get('/', (req, res) => {
-    res.json({
+  res.json({
     name: 'Habit Tracker API',
     version: '1.1',
     endpoints: {
-      health: '/health',
-      habits: '/habits',
-      documentation: 'https://github.com/oltir06/habit-tracker'
+      health: 'https://habittrackerapi.me/health',
+      metrics: 'https://habittrackerapi.me/metrics',
+      habits: 'https://habittrackerapi.me/habits',
+      documentation: 'https://github.com/oltir06/habit-tracker-api'
     }
   });
 });
@@ -28,11 +29,13 @@ app.get('/', (req, res) => {
 const habitsRouter = require('./routes/habits');
 const checkInsRouter = require('./routes/checkIns');
 const healthRouter = require('./routes/health');
+const metricsRouter = require('./routes/metrics');
 
 // Mount routes
 app.use('/habits', habitsRouter);
 app.use('/habits', checkInsRouter);
 app.use('/health', healthRouter);
+app.use('/metrics', metricsRouter);
 
 // Error handler
 app.use((err, req, res, next) => {
