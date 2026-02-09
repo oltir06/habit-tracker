@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const logger = require('./utils/logger');
+const requestLogger = require('./utils/requestLogger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -7,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger); // Add request logging
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -31,7 +34,19 @@ app.use('/habits', habitsRouter);
 app.use('/habits', checkInsRouter);
 app.use('/health', healthRouter);
 
+// Error handler
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error', {
+    error: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method
+  });
+
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 // Start server
 app.listen(PORT, () => {
-  console.log(`Habit Tracker API running on http://localhost:${PORT}`);
+  logger.info(`Habit Tracker API running on port ${PORT}`);
 });
