@@ -15,7 +15,7 @@ app.use(requestLogger); // Add request logging
 app.get('/', (req, res) => {
   res.json({
     name: 'Habit Tracker API',
-    version: '1.1',
+    version: '1.2',
     endpoints: {
       health: 'https://habittrackerapi.me/health',
       metrics: 'https://habittrackerapi.me/metrics',
