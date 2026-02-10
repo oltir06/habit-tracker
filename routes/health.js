@@ -6,13 +6,13 @@ const logger = require('../utils/logger');
 // GET /health - Comprehensive health check
 router.get('/', async (req, res) => {
     const startTime = Date.now();
-    
+
     const healthCheck = {
         status: 'OK',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || 'development',
-        version: '1.1.0',
+        version: '1.2.0',
         checks: {
             database: 'unknown',
             memory: 'unknown'
@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
         const dbStart = Date.now();
         const result = await db.query('SELECT NOW() as time, version() as version');
         const dbDuration = Date.now() - dbStart;
-        
+
         healthCheck.checks.database = {
             status: 'healthy',
             responseTime: `${dbDuration}ms`,
@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
     // 2. Memory Health Check
     const memUsage = process.memoryUsage();
     const memHealthy = memUsage.heapUsed < memUsage.heapTotal * 0.9; // Alert if >90% heap used
-    
+
     healthCheck.checks.memory = {
         status: memHealthy ? 'healthy' : 'warning',
         heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
@@ -65,7 +65,7 @@ router.get('/', async (req, res) => {
 
     // Return appropriate status code
     const statusCode = allHealthy ? 200 : 503;
-    
+
     res.status(statusCode).json(healthCheck);
 });
 
