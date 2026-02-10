@@ -20,7 +20,7 @@ app.get('/', (req, res) => {
       health: 'https://habittrackerapi.me/health',
       metrics: 'https://habittrackerapi.me/metrics',
       habits: 'https://habittrackerapi.me/habits',
-      documentation: 'https://github.com/oltir06/habit-tracker-api'
+      documentation: 'https://github.com/oltir06/habit-tracker'
     }
   });
 });
