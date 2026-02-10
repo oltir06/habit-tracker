@@ -2,12 +2,24 @@
 
 REST API for tracking daily habits and streaks. I built this to get more comfortable with backend development, working with databases, and deploying to AWS.
 
+[![API Status](https://img.shields.io/website?url=https%3A%2F%2Fhabittrackerapi.me)](https://habittrackerapi.me)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+🔗 **Live API:** https://habittrackerapi.me  
+📊 **Health Check:** https://habittrackerapi.me/health  
+📈 **Metrics:** https://habittrackerapi.me/metrics
+
+
 ## Tech Stack
 
 - Node.js + Express
 - PostgreSQL (hosted on AWS RDS)
 - Docker
-- Deployed on AWS EC2
+- Nginx (reverse proxy, rate limiting)
+- AWS EC2 + RDS
+- Let's Encrypt SSL
+- Winston logging + CloudWatch
+- UptimeRobot monitoring
 
 ## What it does
 
@@ -16,12 +28,19 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 - Calculates current and longest streaks automatically
 - Stats endpoint with completion rates and totals
 - Prevents duplicate check-ins for the same day
+- Health check with database and memory status
+- Application metrics endpoint
+- Structured JSON logging to CloudWatch
+- HTTPS with auto-renewed SSL certificates
+- Rate limiting (100 req/min per IP)
 
 ## API Endpoints
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/health` | API + database health check |
+| GET | `/` | API info and available endpoints |
+| GET | `/health` | Health check (database, memory, uptime) |
+| GET | `/metrics` | Application metrics |
 | POST | `/habits` | Create a new habit |
 | GET | `/habits` | List all habits |
 | GET | `/habits/:id` | Get a specific habit |
@@ -54,6 +73,28 @@ CREATE TABLE check_ins (
 );
 ```
 
+## Project Structure
+
+```
+├── app.js                  # Express app setup
+├── Dockerfile
+├── docker-compose.yml
+├── routes/
+│   ├── habits.js           # Habit CRUD endpoints
+│   ├── checkIns.js         # Check-in endpoints
+│   ├── health.js           # Health monitoring
+│   └── metrics.js          # Metrics endpoint
+├── db/
+│   └── db.js               # PostgreSQL connection
+├── utils/
+│   ├── logger.js           # Winston logger setup
+│   ├── requestLogger.js    # Request logging middleware
+│   └── streak.js           # Streak calculation logic
+└── docs/
+    ├── schema.sql
+    └── nginx.conf
+```
+
 ## Running Locally
 
 You need Node.js 18+ and a PostgreSQL database.
@@ -69,9 +110,10 @@ Create a `.env` file:
 ```
 PORT=3000
 DATABASE_URL=postgresql://user:password@localhost:5432/habits
+NODE_ENV=development
 ```
 
-Run the schema SQL above against your database, then:
+Run the schema from `docs/schema.sql` against your database, then:
 
 ```bash
 npm start
@@ -103,8 +145,27 @@ curl http://localhost:3000/habits/1/streak
 
 ## Deployment
 
-Running on an EC2 t3.micro instance with an RDS PostgreSQL database. The app runs in a Docker container on EC2 with security groups set up for HTTP access.
+Running on an EC2 t3.micro instance with an RDS PostgreSQL database (db.t4g.micro). The app runs in a Docker container behind Nginx as a reverse proxy, with SSL from Let's Encrypt.
+
+- Domain: habittrackerapi.me
+- Nginx handles SSL termination, rate limiting, and security headers
+- Logs go to CloudWatch as structured JSON
+- UptimeRobot checks `/health` every 5 minutes with email alerts on downtime
+
+## Security
+
+- HTTPS everywhere via Let's Encrypt
+- Rate limiting at 100 requests/minute per IP
+- Security headers (HSTS, X-Frame-Options, X-Content-Type-Options)
+- Parameterized SQL queries
+- Docker container runs as non-root user
 
 ## License
 
 MIT
+
+## 👤 Author
+
+Built as a portfolio project to demonstrate production-ready API development and cloud deployment skills.
+
+**GitHub:** https://github.com/oltir06/habit-tracker-api
