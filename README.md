@@ -168,4 +168,4 @@ MIT
 
 Built as a portfolio project to demonstrate production-ready API development and cloud deployment skills.
 
-**GitHub:** https://github.com/oltir06/habit-tracker-api
+**GitHub:** https://github.com/oltir06/habit-tracker
