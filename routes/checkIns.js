@@ -2,19 +2,27 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const { calculateStreak } = require('../utils/streak');
+const { authenticate } = require('../middleware/auth');
 
-// POST /habits/:id/checkin - Mark habit done today
+// ALL routes require authentication
+router.use(authenticate);
+
+// POST /habits/:id/checkin - Mark habit done today (verify ownership)
 router.post('/:id/checkin', async (req, res) => {
     const habitId = parseInt(req.params.id);
+    const userId = req.userId;
 
     try {
-        // Check if habit exists
-        const habitCheck = await db.query('SELECT id FROM habits WHERE id = $1', [habitId]);
+        // Verify habit exists and belongs to user
+        const habitCheck = await db.query(
+            'SELECT id FROM habits WHERE id = $1 AND user_id = $2',
+            [habitId, userId]
+        );
+
         if (habitCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
         }
 
-        // Get today's date in YYYY-MM-DD
         const today = new Date().toISOString().split('T')[0];
 
         // Check for existing check-in
@@ -43,13 +51,18 @@ router.post('/:id/checkin', async (req, res) => {
     }
 });
 
-// GET /habits/:id/checkins - Get check-in history for a habit
+// GET /habits/:id/checkins - Get check-in history (verify ownership)
 router.get('/:id/checkins', async (req, res) => {
     const habitId = parseInt(req.params.id);
+    const userId = req.userId;
 
     try {
-        // Check if habit exists
-        const habitCheck = await db.query('SELECT id FROM habits WHERE id = $1', [habitId]);
+        // Verify habit exists and belongs to user
+        const habitCheck = await db.query(
+            'SELECT id FROM habits WHERE id = $1 AND user_id = $2',
+            [habitId, userId]
+        );
+
         if (habitCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
         }
@@ -66,12 +79,18 @@ router.get('/:id/checkins', async (req, res) => {
     }
 });
 
-// GET /habits/:id/streak - Get streak info
+// GET /habits/:id/streak - Get streak info (verify ownership)
 router.get('/:id/streak', async (req, res) => {
     const habitId = parseInt(req.params.id);
+    const userId = req.userId;
 
     try {
-        const habitCheck = await db.query('SELECT id FROM habits WHERE id = $1', [habitId]);
+        // Verify habit exists and belongs to user
+        const habitCheck = await db.query(
+            'SELECT id FROM habits WHERE id = $1 AND user_id = $2',
+            [habitId, userId]
+        );
+
         if (habitCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
         }
