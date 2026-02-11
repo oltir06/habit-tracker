@@ -20,6 +20,7 @@ app.get('/', (req, res) => {
       health: 'https://habittrackerapi.me/health',
       metrics: 'https://habittrackerapi.me/metrics',
       habits: 'https://habittrackerapi.me/habits',
+      auth: 'https://habittrackerapi.me/auth',
       documentation: 'https://github.com/oltir06/habit-tracker'
     }
   });
@@ -30,12 +31,14 @@ const habitsRouter = require('./routes/habits');
 const checkInsRouter = require('./routes/checkIns');
 const healthRouter = require('./routes/health');
 const metricsRouter = require('./routes/metrics');
+const authRouter = require('./routes/auth');  // NEW
 
 // Mount routes
 app.use('/habits', habitsRouter);
 app.use('/habits', checkInsRouter);
 app.use('/health', healthRouter);
 app.use('/metrics', metricsRouter);
+app.use('/auth', authRouter);  // NEW
 
 // Error handler
 app.use((err, req, res, next) => {
