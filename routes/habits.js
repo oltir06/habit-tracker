@@ -2,16 +2,20 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const { calculateStreak } = require('../utils/streak');
+const { authenticate } = require('../middleware/auth');
 
-// POST /habits - Create a new habit
+// ALL routes now require authentication
+router.use(authenticate);
+
+// POST /habits - Create a new habit (user-specific)
 router.post('/', async (req, res) => {
     const { name, description, type, frequency } = req.body;
+    const userId = req.userId;
 
     if (!name) {
         return res.status(400).json({ error: 'Name is required' });
     }
 
-    // Validate type if provided
     const validTypes = ['build', 'break'];
     if (type && !validTypes.includes(type)) {
         return res.status(400).json({ error: 'Type must be "build" or "break"' });
@@ -19,8 +23,8 @@ router.post('/', async (req, res) => {
 
     try {
         const result = await db.query(
-            'INSERT INTO habits (name, description, type, frequency) VALUES ($1, $2, $3, $4) RETURNING *',
-            [name, description || '', type || 'build', frequency || 'daily']
+            'INSERT INTO habits (user_id, name, description, type, frequency) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [userId, name, description || '', type || 'build', frequency || 'daily']
         );
 
         res.status(201).json(result.rows[0]);
@@ -30,10 +34,15 @@ router.post('/', async (req, res) => {
     }
 });
 
-// GET /habits - Get all habits
+// GET /habits - Get all habits (user-specific only)
 router.get('/', async (req, res) => {
+    const userId = req.userId;
+
     try {
-        const result = await db.query('SELECT * FROM habits ORDER BY created_at DESC');
+        const result = await db.query(
+            'SELECT * FROM habits WHERE user_id = $1 ORDER BY created_at DESC',
+            [userId]
+        );
         res.json(result.rows);
     } catch (error) {
         console.error('Database error:', error);
@@ -41,20 +50,30 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET /habits/stats - Get overview stats for all habits
+// GET /habits/stats - Get overview stats for all user's habits
 router.get('/stats', async (req, res) => {
+    const userId = req.userId;
+
     try {
-        // 1. Fetch all habits
-        const habitsResult = await db.query('SELECT * FROM habits ORDER BY created_at DESC');
+        // Fetch only user's habits
+        const habitsResult = await db.query(
+            'SELECT * FROM habits WHERE user_id = $1 ORDER BY created_at DESC',
+            [userId]
+        );
         const habits = habitsResult.rows;
 
-        // 2. Fetch ALL check-ins needed for stats
+        // Fetch check-ins for user's habits only
         const checkInsResult = await db.query(
-            "SELECT habit_id, to_char(date, 'YYYY-MM-DD') as date FROM check_ins ORDER BY date DESC"
+            `SELECT ci.habit_id, to_char(ci.date, 'YYYY-MM-DD') as date 
+             FROM check_ins ci
+             INNER JOIN habits h ON ci.habit_id = h.id
+             WHERE h.user_id = $1
+             ORDER BY ci.date DESC`,
+            [userId]
         );
         const allCheckIns = checkInsResult.rows;
 
-        // 3. Group check-ins by habit_id in memory
+        // Group check-ins by habit_id
         const checkInsByHabit = {};
         allCheckIns.forEach(ci => {
             if (!checkInsByHabit[ci.habit_id]) {
@@ -63,7 +82,7 @@ router.get('/stats', async (req, res) => {
             checkInsByHabit[ci.habit_id].push(ci);
         });
 
-        // 4. Calculate stats for each habit
+        // Calculate stats
         const stats = habits.map((habit) => {
             const habitCheckIns = checkInsByHabit[habit.id] || [];
             const streakInfo = calculateStreak(habitCheckIns);
@@ -82,10 +101,15 @@ router.get('/stats', async (req, res) => {
     }
 });
 
-// GET /habits/:id - Get a single habit
+// GET /habits/:id - Get a single habit (verify ownership)
 router.get('/:id', async (req, res) => {
+    const userId = req.userId;
+
     try {
-        const result = await db.query('SELECT * FROM habits WHERE id = $1', [req.params.id]);
+        const result = await db.query(
+            'SELECT * FROM habits WHERE id = $1 AND user_id = $2',
+            [req.params.id, userId]
+        );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
@@ -98,9 +122,10 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// PUT /habits/:id - Update a habit
+// PUT /habits/:id - Update a habit (verify ownership)
 router.put('/:id', async (req, res) => {
     const { name, description, type, frequency } = req.body;
+    const userId = req.userId;
 
     const validTypes = ['build', 'break'];
     if (type && !validTypes.includes(type)) {
@@ -108,6 +133,16 @@ router.put('/:id', async (req, res) => {
     }
 
     try {
+        // First verify ownership
+        const ownerCheck = await db.query(
+            'SELECT id FROM habits WHERE id = $1 AND user_id = $2',
+            [req.params.id, userId]
+        );
+
+        if (ownerCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Habit not found' });
+        }
+
         // Build dynamic update query
         const updates = [];
         const values = [];
@@ -135,13 +170,10 @@ router.put('/:id', async (req, res) => {
         }
 
         values.push(req.params.id);
-        const query = `UPDATE habits SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+        values.push(userId);
+        const query = `UPDATE habits SET ${updates.join(', ')} WHERE id = $${paramCount} AND user_id = $${paramCount + 1} RETURNING *`;
 
         const result = await db.query(query, values);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Habit not found' });
-        }
 
         res.json(result.rows[0]);
     } catch (error) {
@@ -150,16 +182,20 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// DELETE /habits/:id - Delete a habit
+// DELETE /habits/:id - Delete a habit (verify ownership)
 router.delete('/:id', async (req, res) => {
+    const userId = req.userId;
+
     try {
-        const result = await db.query('DELETE FROM habits WHERE id = $1 RETURNING id', [req.params.id]);
+        const result = await db.query(
+            'DELETE FROM habits WHERE id = $1 AND user_id = $2 RETURNING id',
+            [req.params.id, userId]
+        );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
         }
 
-        // Check-ins are auto-deleted due to ON DELETE CASCADE
         res.status(204).send();
     } catch (error) {
         console.error('Database error:', error);
@@ -167,18 +203,22 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// GET /habits/:id/stats - Get full stats for a habit
+// GET /habits/:id/stats - Get full stats for a habit (verify ownership)
 router.get('/:id/stats', async (req, res) => {
     const habitId = parseInt(req.params.id);
+    const userId = req.userId;
 
     try {
-        const habitResult = await db.query('SELECT * FROM habits WHERE id = $1', [habitId]);
+        const habitResult = await db.query(
+            'SELECT * FROM habits WHERE id = $1 AND user_id = $2',
+            [habitId, userId]
+        );
+
         if (habitResult.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
         }
         const habit = habitResult.rows[0];
 
-        // Get all check-ins for this habit
         const checkInsResult = await db.query(
             "SELECT to_char(date, 'YYYY-MM-DD') as date FROM check_ins WHERE habit_id = $1 ORDER BY date ASC",
             [habitId]
@@ -186,8 +226,8 @@ router.get('/:id/stats', async (req, res) => {
         const habitCheckIns = checkInsResult.rows;
 
         const streakInfo = calculateStreak(habitCheckIns);
-
         const totalCheckIns = habitCheckIns.length;
+
         let firstCheckIn = null;
         let lastCheckIn = null;
         let completionRate = 0;
@@ -196,10 +236,8 @@ router.get('/:id/stats', async (req, res) => {
             firstCheckIn = habitCheckIns[0].date;
             lastCheckIn = habitCheckIns[totalCheckIns - 1].date;
 
-            // Calculate completion rate
             const today = new Date();
             const firstCheckInDate = new Date(firstCheckIn);
-
             today.setHours(0, 0, 0, 0);
             firstCheckInDate.setHours(0, 0, 0, 0);
             const diffTime = Math.abs(today - firstCheckInDate);
