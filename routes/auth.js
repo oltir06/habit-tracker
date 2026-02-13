@@ -1,11 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const db = require('../db/db');
 const logger = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
+const {
+    generateAccessToken,
+    generateRefreshToken,
+    saveRefreshToken,
+    verifyRefreshToken,
+    revokeRefreshToken,
+    revokeAllUserTokens
+} = require('../utils/tokens');
 
 // Validation rules
 const registerValidation = [
@@ -19,18 +26,8 @@ const loginValidation = [
     body('password').notEmpty().withMessage('Password is required')
 ];
 
-// Helper function to generate JWT token
-const generateAccessToken = (userId) => {
-    return jwt.sign(
-        { userId },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
-    );
-};
-
 // POST /auth/register - Register new user
 router.post('/register', registerValidation, async (req, res) => {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -61,8 +58,12 @@ router.post('/register', registerValidation, async (req, res) => {
 
         const user = result.rows[0];
 
-        // Generate access token
+        // Generate tokens
         const accessToken = generateAccessToken(user.id);
+        const refreshToken = generateRefreshToken();
+
+        // Save refresh token
+        await saveRefreshToken(user.id, refreshToken);
 
         logger.info('User registered', { userId: user.id, email: user.email });
 
@@ -73,7 +74,8 @@ router.post('/register', registerValidation, async (req, res) => {
                 name: user.name,
                 created_at: user.created_at
             },
-            accessToken
+            accessToken,
+            refreshToken
         });
 
     } catch (error) {
@@ -84,7 +86,6 @@ router.post('/register', registerValidation, async (req, res) => {
 
 // POST /auth/login - Login user
 router.post('/login', loginValidation, async (req, res) => {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -112,8 +113,12 @@ router.post('/login', loginValidation, async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        // Generate access token
+        // Generate tokens
         const accessToken = generateAccessToken(user.id);
+        const refreshToken = generateRefreshToken();
+
+        // Save refresh token
+        await saveRefreshToken(user.id, refreshToken);
 
         logger.info('User logged in', { userId: user.id, email: user.email });
 
@@ -124,12 +129,82 @@ router.post('/login', loginValidation, async (req, res) => {
                 name: user.name,
                 created_at: user.created_at
             },
-            accessToken
+            accessToken,
+            refreshToken
         });
 
     } catch (error) {
         logger.error('Login error', { error: error.message });
         res.status(500).json({ error: 'Login failed' });
+    }
+});
+
+// POST /auth/refresh - Refresh access token
+router.post('/refresh', async (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(400).json({ error: 'Refresh token is required' });
+    }
+
+    try {
+        // Verify refresh token
+        const verification = await verifyRefreshToken(refreshToken);
+
+        if (!verification.valid) {
+            return res.status(401).json({ error: verification.error });
+        }
+
+        // Generate new access token
+        const accessToken = generateAccessToken(verification.userId);
+
+        logger.info('Token refreshed', { userId: verification.userId });
+
+        res.json({ accessToken });
+
+    } catch (error) {
+        logger.error('Token refresh error', { error: error.message });
+        res.status(500).json({ error: 'Token refresh failed' });
+    }
+});
+
+// POST /auth/logout - Logout (revoke refresh token)
+router.post('/logout', async (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(400).json({ error: 'Refresh token is required' });
+    }
+
+    try {
+        const revoked = await revokeRefreshToken(refreshToken);
+
+        if (!revoked) {
+            return res.status(404).json({ error: 'Token not found' });
+        }
+
+        logger.info('User logged out');
+
+        res.json({ message: 'Logged out successfully' });
+
+    } catch (error) {
+        logger.error('Logout error', { error: error.message });
+        res.status(500).json({ error: 'Logout failed' });
+    }
+});
+
+// POST /auth/logout-all - Logout from all devices
+router.post('/logout-all', authenticate, async (req, res) => {
+    try {
+        await revokeAllUserTokens(req.userId);
+
+        logger.info('User logged out from all devices', { userId: req.userId });
+
+        res.json({ message: 'Logged out from all devices successfully' });
+
+    } catch (error) {
+        logger.error('Logout all error', { error: error.message });
+        res.status(500).json({ error: 'Logout failed' });
     }
 });
 
