@@ -13,6 +13,7 @@ const {
     revokeRefreshToken,
     revokeAllUserTokens
 } = require('../utils/tokens');
+const { getAuthUrl, getGoogleUser } = require('../utils/googleOAuth');
 
 // Validation rules
 const registerValidation = [
@@ -225,6 +226,101 @@ router.get('/me', authenticate, async (req, res) => {
     } catch (error) {
         logger.error('Get user error', { error: error.message });
         res.status(500).json({ error: 'Failed to get user' });
+    }
+});
+
+// GET /auth/google - Initiate Google OAuth flow
+router.get('/google', (req, res) => {
+    try {
+        const authUrl = getAuthUrl();
+
+        // For API, return the URL (client will redirect)
+        res.json({ authUrl });
+
+    } catch (error) {
+        logger.error('Google OAuth initiation error', { error: error.message });
+        res.status(500).json({ error: 'Failed to initiate Google login' });
+    }
+});
+
+// GET /auth/google/callback - Handle Google OAuth callback
+router.get('/google/callback', async (req, res) => {
+    const { code } = req.query;
+
+    if (!code) {
+        return res.status(400).json({ error: 'Authorization code missing' });
+    }
+
+    try {
+        // Get user info from Google
+        const googleUser = await getGoogleUser(code);
+
+        // Check if user exists by google_id
+        let userResult = await db.query(
+            'SELECT id, email, name FROM users WHERE google_id = $1',
+            [googleUser.googleId]
+        );
+
+        let user;
+
+        if (userResult.rows.length > 0) {
+            // Existing user - login
+            user = userResult.rows[0];
+            logger.info('Google user logged in', { userId: user.id, email: user.email });
+
+        } else {
+            // New user - check if email already exists
+            const emailCheck = await db.query(
+                'SELECT id FROM users WHERE email = $1',
+                [googleUser.email]
+            );
+
+            if (emailCheck.rows.length > 0) {
+                // Email exists but no google_id - link accounts
+                await db.query(
+                    'UPDATE users SET google_id = $1 WHERE email = $2',
+                    [googleUser.googleId, googleUser.email]
+                );
+
+                user = emailCheck.rows[0];
+                logger.info('Google account linked to existing user', {
+                    userId: user.id,
+                    email: googleUser.email
+                });
+
+            } else {
+                // Create new user
+                const result = await db.query(
+                    'INSERT INTO users (email, name, google_id) VALUES ($1, $2, $3) RETURNING id, email, name',
+                    [googleUser.email, googleUser.name, googleUser.googleId]
+                );
+
+                user = result.rows[0];
+                logger.info('New user created via Google OAuth', {
+                    userId: user.id,
+                    email: user.email
+                });
+            }
+        }
+
+        // Generate tokens
+        const accessToken = generateAccessToken(user.id);
+        const refreshToken = generateRefreshToken();
+        await saveRefreshToken(user.id, refreshToken);
+
+        res.json({
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name
+            },
+            accessToken,
+            refreshToken
+        });
+
+    } catch (error) {
+        logger.error('Google OAuth callback error', { error: error.message });
+        res.status(500).json({ error: 'Google authentication failed' });
     }
 });
 
