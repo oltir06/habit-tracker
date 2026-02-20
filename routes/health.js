@@ -12,7 +12,7 @@ router.get('/', async (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || 'development',
-        version: '1.2.0',
+        version: '1.3.0',
         checks: {
             database: 'unknown',
             memory: 'unknown'
@@ -44,7 +44,9 @@ router.get('/', async (req, res) => {
 
     // 2. Memory Health Check
     const memUsage = process.memoryUsage();
-    const memHealthy = memUsage.heapUsed < memUsage.heapTotal * 0.9; // Alert if >90% heap used
+    // Alert if heap used is over a hard limit (e.g. 250MB) rather than a percentage of heapTotal.
+    // V8 lazily garbage collects, so heapUsed approaching heapTotal is normal behavior.
+    const memHealthy = (memUsage.heapUsed / 1024 / 1024) < 250;
 
     healthCheck.checks.memory = {
         status: memHealthy ? 'healthy' : 'warning',
