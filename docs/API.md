@@ -1,317 +1,386 @@
-# API Documentation
+# Habit Tracker API — Full Reference
 
-Complete reference for Habit Tracker API endpoints.
-
-**Base URL:** `https://habittrackerapi.me`
+**Base URL:** `https://habittrackerapi.me`  
+**Version:** 1.3.0
 
 ---
 
 ## Authentication
 
-Currently no authentication required.
+All habit and check-in endpoints require a JWT access token in the `Authorization` header:
+
+```
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
+
+Access tokens expire in **15 minutes**. Use the refresh token to get a new one.
 
 ---
 
-## Common Response Codes
+## Auth Endpoints
 
-| Code | Description |
-|------|-------------|
-| 200 | Success |
-| 201 | Created |
-| 204 | No Content (successful delete) |
-| 400 | Bad Request (validation error) |
-| 404 | Not Found |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable (unhealthy) |
+### POST /auth/register
 
----
+Register a new user with email and password.
 
-## Endpoints
-
-### System Endpoints
-
-#### GET /
-Get API information and available endpoints.
-
-**Response:**
+**Request:**
 ```json
 {
-  "name": "Habit Tracker API",
-  "version": "1.1",
-  "endpoints": {
-    "health": "/health",
-    "metrics": "/metrics",
-    "habits": "/habits",
-    "documentation": "https://github.com/oltir06/habit-tracker-api"
-  }
+  "email": "user@example.com",
+  "password": "SecurePass123",
+  "name": "Your Name"
 }
 ```
 
-#### GET /health
-Comprehensive health check.
-
-**Response:** See main README for full example
-
-#### GET /metrics
-Application and system metrics.
-
-**Response:**
+**Response `201`:**
 ```json
 {
-  "process_uptime_seconds": 3245.67,
-  "process_memory_heap_used_bytes": 47185920,
-  "process_memory_heap_total_bytes": 134217728,
-  "habits_total": 5,
-  "check_ins_total": 127,
-  "nodejs_version": "v18.20.8",
-  "environment": "production"
+  "user": { "id": 1, "email": "user@example.com", "name": "Your Name", "created_at": "..." },
+  "accessToken": "eyJhbGc...",
+  "refreshToken": "a1b2c3..."
+}
+```
+
+**Errors:** `400` email already registered | `400` validation errors
+
+---
+
+### POST /auth/login
+
+Login with email and password.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "user": { "id": 1, "email": "user@example.com", "name": "Your Name", "created_at": "..." },
+  "accessToken": "eyJhbGc...",
+  "refreshToken": "a1b2c3..."
+}
+```
+
+**Errors:** `401` invalid email or password
+
+---
+
+### POST /auth/refresh
+
+Get a new access token using a refresh token.
+
+**Request:**
+```json
+{
+  "refreshToken": "a1b2c3..."
+}
+```
+
+**Response `200`:**
+```json
+{
+  "accessToken": "eyJhbGc..."
+}
+```
+
+**Errors:** `401` invalid or expired refresh token
+
+---
+
+### POST /auth/logout
+
+Revoke a refresh token (logout from current device).
+
+**Request:**
+```json
+{
+  "refreshToken": "a1b2c3..."
+}
+```
+
+**Response `200`:**
+```json
+{
+  "message": "Logged out successfully"
 }
 ```
 
 ---
 
-### Habit Endpoints
+### POST /auth/logout-all
 
-#### POST /habits
+Revoke all refresh tokens for the current user (logout all devices).  
+Requires `Authorization` header.
+
+**Response `200`:**
+```json
+{
+  "message": "Logged out from all devices successfully"
+}
+```
+
+---
+
+### GET /auth/me
+
+Get current user info. Requires `Authorization` header.
+
+**Response `200`:**
+```json
+{
+  "user": { "id": 1, "email": "user@example.com", "name": "Your Name", "created_at": "..." }
+}
+```
+
+---
+
+### GET /auth/google
+
+Initiate Google OAuth2 login — returns the URL to redirect the user to.
+
+**Response `200`:**
+```json
+{
+  "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?..."
+}
+```
+
+---
+
+### GET /auth/google/callback
+
+Google OAuth2 callback. Google redirects here after login. Returns user and tokens.
+
+**Response `200`:**
+```json
+{
+  "user": { "id": 1, "email": "user@gmail.com", "name": "Your Name" },
+  "accessToken": "eyJhbGc...",
+  "refreshToken": "a1b2c3..."
+}
+```
+
+**Errors:** `400` missing code | `500` authentication failed
+
+---
+
+## Habit Endpoints
+
+All require `Authorization: Bearer TOKEN`.
+
+---
+
+### POST /habits
+
 Create a new habit.
 
-**Request Body:**
+**Request:**
 ```json
 {
   "name": "Morning Workout",
-  "description": "30 minutes of exercise",
   "type": "build",
-  "frequency": "daily"
+  "description": "30 minutes every morning"
 }
 ```
 
-**Fields:**
-- `name` (required): Habit name
-- `description` (optional): Habit description
-- `type` (optional): "build" or "break" (default: "build")
-- `frequency` (optional): "daily", "weekly", etc. (default: "daily")
+`type`: `"build"` (build a habit) or `"break"` (break a habit)
 
-**Response (201):**
+**Response `201`:**
 ```json
 {
   "id": 1,
+  "user_id": 1,
   "name": "Morning Workout",
-  "description": "30 minutes of exercise",
   "type": "build",
-  "frequency": "daily",
-  "created_at": "2026-02-09T20:00:00.000Z"
+  "description": "30 minutes every morning",
+  "created_at": "..."
 }
 ```
 
-#### GET /habits
-List all habits.
+---
 
-**Response (200):**
+### GET /habits
+
+Get all habits for the authenticated user.
+
+**Response `200`:**
+```json
+[
+  { "id": 1, "name": "Morning Workout", "type": "build", ... }
+]
+```
+
+---
+
+### GET /habits/:id
+
+Get a specific habit by ID.
+
+**Response `200`:** habit object  
+**Errors:** `404` not found
+
+---
+
+### PUT /habits/:id
+
+Update a habit.
+
+**Request:** any combination of `name`, `description`, `type`
+
+**Response `200`:** updated habit object  
+**Errors:** `404` not found
+
+---
+
+### DELETE /habits/:id
+
+Delete a habit (and all its check-ins).
+
+**Response `200`:** `{ "message": "Habit deleted" }`  
+**Errors:** `404` not found
+
+---
+
+### GET /habits/stats
+
+Get stats overview for all user's habits.
+
+**Response `200`:**
 ```json
 [
   {
     "id": 1,
     "name": "Morning Workout",
-    "description": "30 minutes of exercise",
-    "type": "build",
-    "frequency": "daily",
-    "created_at": "2026-02-09T20:00:00.000Z"
+    "currentStreak": 5,
+    "longestStreak": 12,
+    "totalCheckIns": 30,
+    "completionRate": 0.85
   }
 ]
 ```
 
-#### GET /habits/:id
-Get a single habit.
+---
 
-**Parameters:**
-- `id`: Habit ID
+## Check-in Endpoints
 
-**Response (200):** Same as single habit object above
-
-**Errors:**
-- 404: Habit not found
-
-#### PUT /habits/:id
-Update a habit.
-
-**Parameters:**
-- `id`: Habit ID
-
-**Request Body (all fields optional):**
-```json
-{
-  "name": "Evening Workout",
-  "description": "Updated description",
-  "type": "build",
-  "frequency": "daily"
-}
-```
-
-**Response (200):** Updated habit object
-
-#### DELETE /habits/:id
-Delete a habit and all its check-ins.
-
-**Parameters:**
-- `id`: Habit ID
-
-**Response (204):** No content
+All require `Authorization: Bearer TOKEN`.
 
 ---
 
-### Check-in Endpoints
+### POST /habits/:id/checkin
 
-#### POST /habits/:id/checkin
-Mark habit as complete today.
+Check in for today (one per day per habit).
 
-**Parameters:**
-- `id`: Habit ID
-
-**Response (201):**
+**Response `201`:**
 ```json
 {
-  "message": "Check-in successful!",
-  "checkIn": {
-    "id": 15,
-    "habit_id": 1,
-    "date": "2026-02-09",
-    "created_at": "2026-02-09T20:15:00.000Z"
-  }
+  "id": 1,
+  "habit_id": 1,
+  "date": "2026-02-20",
+  "created_at": "..."
 }
 ```
 
-**Errors:**
-- 400: Already checked in today
-- 404: Habit not found
+**Errors:** `409` already checked in today | `404` habit not found
 
-#### GET /habits/:id/checkins
+---
+
+### GET /habits/:id/checkins
+
 Get check-in history for a habit.
 
-**Parameters:**
-- `id`: Habit ID
-
-**Response (200):**
+**Response `200`:**
 ```json
 [
-  {
-    "id": 15,
-    "habit_id": 1,
-    "date": "2026-02-09",
-    "created_at": "2026-02-09T20:15:00.000Z"
-  },
-  {
-    "id": 14,
-    "habit_id": 1,
-    "date": "2026-02-08",
-    "created_at": "2026-02-08T21:00:00.000Z"
-  }
+  { "id": 1, "habit_id": 1, "date": "2026-02-20", "created_at": "..." }
 ]
 ```
 
 ---
 
-### Analytics Endpoints
+### GET /habits/:id/streak
 
-#### GET /habits/:id/streak
-Get current and longest streak for a habit.
+Get current and longest streak.
 
-**Parameters:**
-- `id`: Habit ID
-
-**Response (200):**
+**Response `200`:**
 ```json
 {
-  "habitId": 1,
-  "currentStreak": 7,
-  "longestStreak": 15
+  "currentStreak": 5,
+  "longestStreak": 12
 }
 ```
 
-#### GET /habits/:id/stats
-Get detailed statistics for a habit.
+---
 
-**Parameters:**
-- `id`: Habit ID
+### GET /habits/:id/stats
 
-**Response (200):**
+Get detailed stats for a single habit.
+
+**Response `200`:**
 ```json
 {
-  "habitId": 1,
+  "id": 1,
   "name": "Morning Workout",
-  "type": "build",
-  "totalCheckIns": 45,
-  "currentStreak": 7,
-  "longestStreak": 15,
+  "currentStreak": 5,
+  "longestStreak": 12,
+  "totalCheckIns": 30,
   "completionRate": 0.85,
   "firstCheckIn": "2026-01-01",
-  "lastCheckIn": "2026-02-09"
+  "lastCheckIn": "2026-02-20"
 }
 ```
 
-#### GET /habits/stats
-Get overview statistics for all habits.
+---
 
-**Response (200):**
-```json
-[
-  {
-    "habitId": 1,
-    "name": "Morning Workout",
-    "currentStreak": 7,
-    "longestStreak": 15
-  },
-  {
-    "habitId": 2,
-    "name": "Reading",
-    "currentStreak": 3,
-    "longestStreak": 10
-  }
-]
-```
+## System Endpoints
+
+### GET /
+
+API info and available endpoints. No auth required.
+
+### GET /health
+
+Health check — returns database status, memory usage, and uptime. No auth required.
+
+### GET /metrics
+
+Application metrics (request counts, error rates). No auth required.
 
 ---
 
-## Rate Limiting
-
-- **Limit:** 100 requests per minute per IP
-- **Health endpoint:** 200 requests per minute
-- **Burst:** 20 requests allowed temporarily
-- **Response:** 503 Service Unavailable when rate limited
-
----
-
-## Examples
-
-### Create and Track a Habit
-```bash
-# 1. Create habit
-curl -X POST https://habittrackerapi.me/habits \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Daily Reading","type":"build"}'
-
-# 2. Check in today
-curl -X POST https://habittrackerapi.me/habits/1/checkin
-
-# 3. View streak
-curl https://habittrackerapi.me/habits/1/streak
-
-# 4. Get full stats
-curl https://habittrackerapi.me/habits/1/stats
-```
-
----
-
-## Errors
+## Error Format
 
 All errors return JSON:
+
 ```json
 {
-  "error": "Error message description"
+  "error": "Description of what went wrong"
 }
 ```
 
-Common errors:
-- "Name is required"
-- "Habit not found"
-- "Already checked in today"
-- "Type must be 'build' or 'break'"
+Validation errors:
+```json
+{
+  "errors": [
+    { "field": "email", "message": "Valid email is required" }
+  ]
+}
+```
+
+## Status Codes
+
+| Code | Meaning |
+|------|---------|
+| `200` | Success |
+| `201` | Created |
+| `400` | Bad request / validation error |
+| `401` | Unauthorized (missing or invalid token) |
+| `404` | Not found |
+| `409` | Conflict (e.g. duplicate check-in) |
+| `429` | Too many requests (rate limited) |
+| `500` | Internal server error |
