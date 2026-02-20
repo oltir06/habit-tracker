@@ -9,7 +9,6 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 📊 **Health Check:** https://habittrackerapi.me/health  
 📈 **Metrics:** https://habittrackerapi.me/metrics
 
-
 ## Tech Stack
 
 - Node.js + Express
@@ -23,6 +22,9 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 
 ## What it does
 
+- User registration and login with email/password
+- Google OAuth2 social login
+- JWT-based authentication (access + refresh tokens)
 - Create and manage habits (things you want to build or break)
 - Check in daily to track progress
 - Calculates current and longest streaks automatically
@@ -34,29 +36,114 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 - HTTPS with auto-renewed SSL certificates
 - Rate limiting (100 req/min per IP)
 
+## 🔐 Authentication
+
+### Register
+```bash
+curl -X POST https://habittrackerapi.me/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123",
+    "name": "Your Name"
+  }'
+```
+
+### Login
+```bash
+curl -X POST https://habittrackerapi.me/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123"
+  }'
+```
+
+### Using Access Token
+```bash
+curl https://habittrackerapi.me/habits \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Refresh Token
+```bash
+curl -X POST https://habittrackerapi.me/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "YOUR_REFRESH_TOKEN"}'
+```
+
+### Logout
+```bash
+curl -X POST https://habittrackerapi.me/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "YOUR_REFRESH_TOKEN"}'
+```
+
+### Google OAuth
+```bash
+# Step 1: Get auth URL
+curl https://habittrackerapi.me/auth/google
+
+# Step 2: Open the returned authUrl in browser, login with Google
+# Step 3: You'll receive user + tokens in the callback response
+```
+
 ## API Endpoints
+
+### Authentication
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `POST` | `/auth/register` | Register new user | No |
+| `POST` | `/auth/login` | Login with email/password | No |
+| `POST` | `/auth/refresh` | Refresh access token | No |
+| `POST` | `/auth/logout` | Logout (revoke refresh token) | No |
+| `POST` | `/auth/logout-all` | Logout all devices | Yes |
+| `GET` | `/auth/me` | Get current user info | Yes |
+| `GET` | `/auth/google` | Initiate Google OAuth | No |
+| `GET` | `/auth/google/callback` | Google OAuth callback | No |
+
+### Habits
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/` | API info and available endpoints |
-| GET | `/health` | Health check (database, memory, uptime) |
-| GET | `/metrics` | Application metrics |
-| POST | `/habits` | Create a new habit |
-| GET | `/habits` | List all habits |
-| GET | `/habits/:id` | Get a specific habit |
-| PUT | `/habits/:id` | Update a habit |
-| DELETE | `/habits/:id` | Delete a habit (cascades to check-ins) |
-| POST | `/habits/:id/checkin` | Check in for today |
-| GET | `/habits/:id/checkins` | Get check-in history |
-| GET | `/habits/:id/streak` | Get current and longest streak |
-| GET | `/habits/:id/stats` | Get stats for one habit |
-| GET | `/habits/stats` | Get stats overview for all habits |
+| `GET` | `/` | API info and available endpoints |
+| `GET` | `/health` | Health check (database, memory, uptime) |
+| `GET` | `/metrics` | Application metrics |
+| `POST` | `/habits` | Create a new habit |
+| `GET` | `/habits` | List all habits |
+| `GET` | `/habits/:id` | Get a specific habit |
+| `PUT` | `/habits/:id` | Update a habit |
+| `DELETE` | `/habits/:id` | Delete a habit (cascades to check-ins) |
+| `POST` | `/habits/:id/checkin` | Check in for today |
+| `GET` | `/habits/:id/checkins` | Get check-in history |
+| `GET` | `/habits/:id/streak` | Get current and longest streak |
+| `GET` | `/habits/:id/stats` | Get stats for one habit |
+| `GET` | `/habits/stats` | Get stats overview for all habits |
 
 ## Database Schema
 
 ```sql
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255),
+  name VARCHAR(255) NOT NULL,
+  google_id VARCHAR(255) UNIQUE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE refresh_tokens (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token VARCHAR(255) UNIQUE NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE habits (
   id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   description TEXT,
   type VARCHAR(50) NOT NULL DEFAULT 'build',
@@ -80,17 +167,23 @@ CREATE TABLE check_ins (
 ├── Dockerfile
 ├── docker-compose.yml
 ├── routes/
+│   ├── auth.js             # Authentication endpoints
 │   ├── habits.js           # Habit CRUD endpoints
 │   ├── checkIns.js         # Check-in endpoints
 │   ├── health.js           # Health monitoring
 │   └── metrics.js          # Metrics endpoint
+├── middleware/
+│   └── auth.js             # JWT authentication middleware
 ├── db/
 │   └── db.js               # PostgreSQL connection
 ├── utils/
 │   ├── logger.js           # Winston logger setup
 │   ├── requestLogger.js    # Request logging middleware
-│   └── streak.js           # Streak calculation logic
+│   ├── streak.js           # Streak calculation logic
+│   ├── tokens.js           # JWT token utilities
+│   └── googleOAuth.js      # Google OAuth2 helper
 └── docs/
+    ├── API.md
     ├── schema.sql
     └── nginx.conf
 ```
@@ -105,12 +198,20 @@ cd habit-tracker-api
 npm install
 ```
 
-Create a `.env` file:
+Create a `.env` file (see `.env.example`):
 
 ```
 PORT=3000
 DATABASE_URL=postgresql://user:password@localhost:5432/habits
 NODE_ENV=development
+JWT_SECRET=your-jwt-secret
+JWT_REFRESH_SECRET=your-refresh-secret
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+BCRYPT_ROUNDS=10
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
 ```
 
 Run the schema from `docs/schema.sql` against your database, then:
@@ -128,21 +229,6 @@ docker build -t habit-tracker .
 docker run -p 3000:3000 --env-file .env habit-tracker
 ```
 
-## Quick Example
-
-```bash
-# create a habit
-curl -X POST http://localhost:3000/habits \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Morning Workout","type":"build"}'
-
-# check in
-curl -X POST http://localhost:3000/habits/1/checkin
-
-# see your streak
-curl http://localhost:3000/habits/1/streak
-```
-
 ## Deployment
 
 Running on an EC2 t3.micro instance with an RDS PostgreSQL database (db.t4g.micro). The app runs in a Docker container behind Nginx as a reverse proxy, with SSL from Let's Encrypt.
@@ -155,9 +241,12 @@ Running on an EC2 t3.micro instance with an RDS PostgreSQL database (db.t4g.micr
 ## Security
 
 - HTTPS everywhere via Let's Encrypt
+- JWT access tokens (15 min expiration) + refresh tokens (7 days, revocable)
+- Bcrypt password hashing (10 rounds)
 - Rate limiting at 100 requests/minute per IP
 - Security headers (HSTS, X-Frame-Options, X-Content-Type-Options)
-- Parameterized SQL queries
+- Parameterized SQL queries (no SQL injection)
+- Users can only access their own data
 - Docker container runs as non-root user
 
 ## License
