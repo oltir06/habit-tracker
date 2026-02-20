@@ -16,12 +16,12 @@ app.use(requestLogger);
 app.get('/', (req, res) => {
   res.json({
     name: 'Habit Tracker API',
-    version: '1.2',
+    version: '1.3',
     endpoints: {
       health: 'https://habittrackerapi.me/health',
       metrics: 'https://habittrackerapi.me/metrics',
       habits: 'https://habittrackerapi.me/habits',
-      auth: 'https://habittrackerapi.me/auth',
+      auth: '/auth',
       documentation: 'https://github.com/oltir06/habit-tracker'
     }
   });
