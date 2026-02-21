@@ -152,6 +152,7 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
     const { name, description, type, frequency } = req.body;
     const userId = req.userId;
+    const habitId = parseInt(req.params.id);
 
     const validTypes = ['build', 'break'];
     if (type && !validTypes.includes(type)) {
@@ -195,7 +196,7 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: 'No fields to update' });
         }
 
-        values.push(req.params.id);
+        values.push(habitId);
         values.push(userId);
         const query = `UPDATE habits SET ${updates.join(', ')} WHERE id = $${paramCount} AND user_id = $${paramCount + 1} RETURNING *`;
 
@@ -213,11 +214,12 @@ router.put('/:id', async (req, res) => {
 // DELETE /habits/:id - Delete a habit (verify ownership)
 router.delete('/:id', async (req, res) => {
     const userId = req.userId;
+    const habitId = parseInt(req.params.id);
 
     try {
         const result = await db.query(
             'DELETE FROM habits WHERE id = $1 AND user_id = $2 RETURNING id',
-            [req.params.id, userId]
+            [habitId, userId]
         );
 
         if (result.rows.length === 0) {
