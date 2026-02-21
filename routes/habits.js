@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db/db');
 const { calculateStreak } = require('../utils/streak');
 const { authenticate } = require('../middleware/auth');
+const cache = require('../utils/cache');
 
 // ALL routes now require authentication
 router.use(authenticate);
@@ -27,6 +28,9 @@ router.post('/', async (req, res) => {
             [userId, name, description || '', type || 'build', frequency || 'daily']
         );
 
+        // Invalidate user's habits cache
+        await cache.delPattern(`user:${userId}:habits*`);
+
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('Database error:', error);
@@ -37,12 +41,24 @@ router.post('/', async (req, res) => {
 // GET /habits - Get all habits (user-specific only)
 router.get('/', async (req, res) => {
     const userId = req.userId;
+    const cacheKey = `user:${userId}:habits`;
 
     try {
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        // Cache miss - query database
         const result = await db.query(
             'SELECT * FROM habits WHERE user_id = $1 ORDER BY created_at DESC',
             [userId]
         );
+
+        // Save to cache (5 minutes)
+        await cache.set(cacheKey, result.rows, 300);
+
         res.json(result.rows);
     } catch (error) {
         console.error('Database error:', error);
@@ -53,8 +69,15 @@ router.get('/', async (req, res) => {
 // GET /habits/stats - Get overview stats for all user's habits
 router.get('/stats', async (req, res) => {
     const userId = req.userId;
+    const cacheKey = `user:${userId}:habits:stats`;
 
     try {
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
         // Fetch only user's habits
         const habitsResult = await db.query(
             'SELECT * FROM habits WHERE user_id = $1 ORDER BY created_at DESC',
@@ -93,6 +116,9 @@ router.get('/stats', async (req, res) => {
                 longestStreak: streakInfo.longestStreak
             };
         });
+
+        // Save to cache (5 minutes)
+        await cache.set(cacheKey, stats, 300);
 
         res.json(stats);
     } catch (error) {
@@ -175,6 +201,9 @@ router.put('/:id', async (req, res) => {
 
         const result = await db.query(query, values);
 
+        // Invalidate user's habits cache
+        await cache.delPattern(`user:${userId}:habits*`);
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Database error:', error);
@@ -195,6 +224,9 @@ router.delete('/:id', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Habit not found' });
         }
+
+        // Invalidate user's habits cache
+        await cache.delPattern(`user:${userId}:habits*`);
 
         res.status(204).send();
     } catch (error) {
