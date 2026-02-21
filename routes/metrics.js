@@ -9,6 +9,7 @@ router.get('/', async (req, res) => {
         // Get database stats
         const habitsResult = await db.query('SELECT COUNT(*) as count FROM habits');
         const checkInsResult = await db.query('SELECT COUNT(*) as count FROM check_ins');
+        const usersResult = await db.query('SELECT COUNT(*) as count FROM users');
 
         // Get cache stats
         const cacheStats = await cache.stats();
@@ -21,11 +22,16 @@ router.get('/', async (req, res) => {
             process_memory_rss_bytes: process.memoryUsage().rss,
 
             // Application metrics
+            users_total: parseInt(usersResult.rows[0].count),
             habits_total: parseInt(habitsResult.rows[0].count),
             check_ins_total: parseInt(checkInsResult.rows[0].count),
 
             // Cache metrics
             cache_connected: cacheStats.connected,
+            cache_hits: cacheStats.hits,
+            cache_misses: cacheStats.misses,
+            cache_hit_rate: cacheStats.hitRate,
+            cache_total_keys: cacheStats.totalKeys,
 
             // Node.js info
             nodejs_version: process.version,

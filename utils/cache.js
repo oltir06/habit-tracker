@@ -1,6 +1,10 @@
 const redis = require('../db/redis');
 const logger = require('./logger');
 
+// In-memory counters for cache statistics
+let cacheHits = 0;
+let cacheMisses = 0;
+
 /**
  * Get value from cache
  * @param {string} key - Cache key
@@ -10,10 +14,12 @@ const get = async (key) => {
     try {
         const value = await redis.get(key);
         if (value) {
-            logger.info('Cache hit', { key });
+            cacheHits++;
+            logger.info('Cache hit', { key, totalHits: cacheHits });
             return JSON.parse(value);
         }
-        logger.info('Cache miss', { key });
+        cacheMisses++;
+        logger.info('Cache miss', { key, totalMisses: cacheMisses });
         return null;
     } catch (error) {
         logger.error('Cache get error', { key, error: error.message });
@@ -98,16 +104,37 @@ const stats = async () => {
     try {
         const info = await redis.info('stats');
         const memory = await redis.info('memory');
+        const dbSize = await redis.dbsize();
+
+        const totalRequests = cacheHits + cacheMisses;
+        const hitRate = totalRequests > 0 ? (cacheHits / totalRequests * 100).toFixed(2) : 0;
 
         return {
             connected: redis.status === 'ready',
+            hits: cacheHits,
+            misses: cacheMisses,
+            hitRate: `${hitRate}%`,
+            totalKeys: dbSize,
             stats: info,
             memory: memory
         };
     } catch (error) {
         logger.error('Cache stats error', { error: error.message });
-        return { connected: false };
+        return {
+            connected: false,
+            hits: cacheHits,
+            misses: cacheMisses
+        };
     }
+};
+
+/**
+ * Reset cache statistics
+ */
+const resetStats = () => {
+    cacheHits = 0;
+    cacheMisses = 0;
+    logger.info('Cache statistics reset');
 };
 
 module.exports = {
@@ -116,5 +143,6 @@ module.exports = {
     del,
     delPattern,
     flush,
-    stats
+    stats,
+    resetStats
 };
