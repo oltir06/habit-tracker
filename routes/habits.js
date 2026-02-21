@@ -4,6 +4,7 @@ const db = require('../db/db');
 const { calculateStreak } = require('../utils/streak');
 const { authenticate } = require('../middleware/auth');
 const cache = require('../utils/cache');
+const { cacheMiddleware, invalidateUserCache } = require('../middleware/cache');
 
 // ALL routes now require authentication
 router.use(authenticate);
@@ -28,8 +29,7 @@ router.post('/', async (req, res) => {
             [userId, name, description || '', type || 'build', frequency || 'daily']
         );
 
-        // Invalidate user's habits cache
-        await cache.delPattern(`user:${userId}:habits*`);
+        await invalidateUserCache(userId);
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -201,8 +201,7 @@ router.put('/:id', async (req, res) => {
 
         const result = await db.query(query, values);
 
-        // Invalidate user's habits cache
-        await cache.delPattern(`user:${userId}:habits*`);
+        await invalidateUserCache(userId, habitId);
 
         res.json(result.rows[0]);
     } catch (error) {
@@ -225,8 +224,7 @@ router.delete('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Habit not found' });
         }
 
-        // Invalidate user's habits cache
-        await cache.delPattern(`user:${userId}:habits*`);
+        await invalidateUserCache(userId, habitId);
 
         res.status(204).send();
     } catch (error) {
@@ -235,66 +233,70 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// GET /habits/:id/stats - Get full stats for a habit (verify ownership)
-router.get('/:id/stats', async (req, res) => {
-    const habitId = parseInt(req.params.id);
-    const userId = req.userId;
+// GET /habits/:id/stats - Get full stats for a habit (cached)
+router.get(
+    '/:id/stats',
+    cacheMiddleware('habit-stats', 300),
+    async (req, res) => {
+        const habitId = parseInt(req.params.id);
+        const userId = req.userId;
 
-    try {
-        const habitResult = await db.query(
-            'SELECT * FROM habits WHERE id = $1 AND user_id = $2',
-            [habitId, userId]
-        );
+        try {
+            const habitResult = await db.query(
+                'SELECT * FROM habits WHERE id = $1 AND user_id = $2',
+                [habitId, userId]
+            );
 
-        if (habitResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Habit not found' });
+            if (habitResult.rows.length === 0) {
+                return res.status(404).json({ error: 'Habit not found' });
+            }
+            const habit = habitResult.rows[0];
+
+            const checkInsResult = await db.query(
+                "SELECT to_char(date, 'YYYY-MM-DD') as date FROM check_ins WHERE habit_id = $1 ORDER BY date ASC",
+                [habitId]
+            );
+            const habitCheckIns = checkInsResult.rows;
+
+            const streakInfo = calculateStreak(habitCheckIns);
+            const totalCheckIns = habitCheckIns.length;
+
+            let firstCheckIn = null;
+            let lastCheckIn = null;
+            let completionRate = 0;
+
+            if (totalCheckIns > 0) {
+                firstCheckIn = habitCheckIns[0].date;
+                lastCheckIn = habitCheckIns[totalCheckIns - 1].date;
+
+                const today = new Date();
+                const firstCheckInDate = new Date(firstCheckIn);
+                today.setHours(0, 0, 0, 0);
+                firstCheckInDate.setHours(0, 0, 0, 0);
+                const diffTime = Math.abs(today - firstCheckInDate);
+                const daysSinceFirst = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+                completionRate = totalCheckIns / daysSinceFirst;
+                if (completionRate > 1) completionRate = 1;
+                completionRate = Math.round(completionRate * 100) / 100;
+            }
+
+            res.json({
+                habitId: habit.id,
+                name: habit.name,
+                type: habit.type,
+                totalCheckIns,
+                currentStreak: streakInfo.currentStreak,
+                longestStreak: streakInfo.longestStreak,
+                completionRate,
+                firstCheckIn,
+                lastCheckIn
+            });
+        } catch (error) {
+            console.error('Database error:', error);
+            res.status(500).json({ error: 'Failed to fetch habit stats' });
         }
-        const habit = habitResult.rows[0];
-
-        const checkInsResult = await db.query(
-            "SELECT to_char(date, 'YYYY-MM-DD') as date FROM check_ins WHERE habit_id = $1 ORDER BY date ASC",
-            [habitId]
-        );
-        const habitCheckIns = checkInsResult.rows;
-
-        const streakInfo = calculateStreak(habitCheckIns);
-        const totalCheckIns = habitCheckIns.length;
-
-        let firstCheckIn = null;
-        let lastCheckIn = null;
-        let completionRate = 0;
-
-        if (totalCheckIns > 0) {
-            firstCheckIn = habitCheckIns[0].date;
-            lastCheckIn = habitCheckIns[totalCheckIns - 1].date;
-
-            const today = new Date();
-            const firstCheckInDate = new Date(firstCheckIn);
-            today.setHours(0, 0, 0, 0);
-            firstCheckInDate.setHours(0, 0, 0, 0);
-            const diffTime = Math.abs(today - firstCheckInDate);
-            const daysSinceFirst = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-            completionRate = totalCheckIns / daysSinceFirst;
-            if (completionRate > 1) completionRate = 1;
-            completionRate = Math.round(completionRate * 100) / 100;
-        }
-
-        res.json({
-            habitId: habit.id,
-            name: habit.name,
-            type: habit.type,
-            totalCheckIns,
-            currentStreak: streakInfo.currentStreak,
-            longestStreak: streakInfo.longestStreak,
-            completionRate,
-            firstCheckIn,
-            lastCheckIn
-        });
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to fetch habit stats' });
     }
-});
+);
 
 module.exports = router;
