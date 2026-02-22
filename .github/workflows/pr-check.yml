@@ -58,7 +58,7 @@ jobs:
         with:
           node-version: '18'
       - run: npm ci
-      - run: npm audit --audit-level=high || true
+      - run: npm audit --audit-level=high
 
   docker-build:
     runs-on: ubuntu-latest
