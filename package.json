@@ -4,8 +4,15 @@
   "description": "A production-grade REST API for tracking daily habits and building streaks.",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "test": "jest --coverage --detectOpenHandles --forceExit",
+    "test:watch": "jest --watch",
     "dev": "nodemon app.js"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "test-results/coverage",
+    "testTimeout": 10000
   },
   "keywords": [],
   "author": "",
@@ -26,6 +33,8 @@
   },
   "devDependencies": {
     "axios": "^1.13.5",
-    "nodemon": "^3.1.11"
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^7.2.2"
   }
 }
