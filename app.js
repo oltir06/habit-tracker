@@ -17,7 +17,7 @@ app.use(requestLogger);
 app.get('/', (req, res) => {
   res.json({
     name: 'Habit Tracker API',
-    version: '1.4.0',
+    version: '1.5.0',
     endpoints: {
       health: 'https://habittrackerapi.me/health',
       metrics: 'https://habittrackerapi.me/metrics',
@@ -56,22 +56,28 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Cleanup expired tokens every hour
-setInterval(async () => {
-  await cleanupExpiredTokens();
-}, 60 * 60 * 1000);
+// Cleanup expired tokens every hour (only in production/dev)
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(async () => {
+    await cleanupExpiredTokens();
+  }, 60 * 60 * 1000);
+}
 
-// Start server
-app.listen(PORT, () => {
-  logger.info(`Habit Tracker API running on port ${PORT}`);
+// Start server only if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    logger.info(`Habit Tracker API running on port ${PORT}`);
 
-  // Run cleanup on startup
-  cleanupExpiredTokens();
+    // Run cleanup on startup
+    cleanupExpiredTokens();
 
-  // Warm cache for active users after startup
-  setTimeout(async () => {
-    logger.info('Starting cache warming...');
-    const warmed = await warmAllActiveUsersCache();
-    logger.info('Cache warming complete', { usersWarmed: warmed });
-  }, 5000);
-});
+    // Warm cache for active users after startup
+    setTimeout(async () => {
+      logger.info('Starting cache warming...');
+      const warmed = await warmAllActiveUsersCache();
+      logger.info('Cache warming complete', { usersWarmed: warmed });
+    }, 5000);
+  });
+}
+
+module.exports = app;

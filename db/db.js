@@ -1,12 +1,18 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false // Required for AWS RDS
-    }
-});
+const poolConfig = {
+    connectionString: process.env.DATABASE_URL
+};
+
+// Required for AWS RDS, but breaks local/GitHub Actions tests
+if (process.env.NODE_ENV !== 'test') {
+    poolConfig.ssl = {
+        rejectUnauthorized: false
+    };
+}
+
+const pool = new Pool(poolConfig);
 
 // Test connection
 pool.query('SELECT NOW()', (err, res) => {

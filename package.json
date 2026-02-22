@@ -1,11 +1,18 @@
 {
   "name": "habit-tracker",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A production-grade REST API for tracking daily habits and building streaks.",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "test": "jest --coverage --detectOpenHandles --forceExit",
+    "test:watch": "jest --watch",
     "dev": "nodemon app.js"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "test-results/coverage",
+    "testTimeout": 10000
   },
   "keywords": [],
   "author": "",
@@ -26,6 +33,13 @@
   },
   "devDependencies": {
     "axios": "^1.13.5",
-    "nodemon": "^3.1.11"
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^7.2.2"
+  },
+  "overrides": {
+    "test-exclude": "^8.0.0",
+    "glob": "^10.0.0",
+    "minimatch": "^10.2.2"
   }
 }
