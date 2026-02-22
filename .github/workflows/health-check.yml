@@ -1,0 +1,45 @@
+name: Production Health Check
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check API Health
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://habittrackerapi.me/health)
+          if [ $response -eq 200 ]; then
+            echo "✅ API is healthy"
+            exit 0
+          else
+            echo "❌ API health check failed with status $response"
+            exit 1
+          fi
+
+      - name: Check API Metrics
+        run: |
+          metrics=$(curl -s https://habittrackerapi.me/metrics)
+          echo "API Metrics:"
+          echo "$metrics" | jq '.'
+
+      - name: Notify on failure
+        if: failure()
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Check container status
+            docker ps -a | grep habit-tracker-api
+            
+            # Get recent logs
+            docker logs --tail 50 habit-tracker-api
+            
+            # Attempt restart
+            docker restart habit-tracker-api
