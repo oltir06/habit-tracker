@@ -1,6 +1,6 @@
 {
   "name": "habit-tracker",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A production-grade REST API for tracking daily habits and building streaks.",
   "main": "app.js",
   "scripts": {
