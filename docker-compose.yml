@@ -2,8 +2,11 @@ services:
   habit-tracker-api:
     build: .
     container_name: habit-tracker-api
-    ports:
-      - "3000:3000"
+    network_mode: "host"
     env_file:
       - .env
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     restart: unless-stopped
