@@ -13,6 +13,7 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 
 - Node.js + Express
 - PostgreSQL (hosted on AWS RDS)
+- Redis (caching layer)
 - Docker
 - Nginx (reverse proxy, rate limiting)
 - AWS EC2 + RDS
@@ -22,15 +23,24 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 
 ## What it does
 
+**Authentication**
 - User registration and login with email/password
 - Google OAuth2 social login
 - JWT-based authentication (access + refresh tokens)
+
+**Habits & Tracking**
 - Create and manage habits (things you want to build or break)
 - Check in daily to track progress
 - Calculates current and longest streaks automatically
 - Stats endpoint with completion rates and totals
 - Prevents duplicate check-ins for the same day
-- Health check with database and memory status
+
+**Performance**
+- Redis caching layer with cache warming
+- Cache monitoring and management endpoints
+
+**Operations**
+- Health check (database, cache, memory)
 - Application metrics endpoint
 - Structured JSON logging to CloudWatch
 - HTTPS with auto-renewed SSL certificates
@@ -103,13 +113,20 @@ curl https://habittrackerapi.me/auth/google
 | `GET` | `/auth/google` | Initiate Google OAuth | No |
 | `GET` | `/auth/google/callback` | Google OAuth callback | No |
 
+### System
+
+| Method | Route | Description | Auth Required |
+|--------|-------|-------------|---------------|
+| `GET` | `/` | API info and available endpoints | No |
+| `GET` | `/health` | Health check (database, cache, memory) | No |
+| `GET` | `/metrics` | Application metrics | No |
+
 ### Habits
+
+All habit endpoints require authentication.
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| `GET` | `/` | API info and available endpoints |
-| `GET` | `/health` | Health check (database, memory, uptime) |
-| `GET` | `/metrics` | Application metrics |
 | `POST` | `/habits` | Create a new habit |
 | `GET` | `/habits` | List all habits |
 | `GET` | `/habits/:id` | Get a specific habit |
@@ -120,6 +137,14 @@ curl https://habittrackerapi.me/auth/google
 | `GET` | `/habits/:id/streak` | Get current and longest streak |
 | `GET` | `/habits/:id/stats` | Get stats for one habit |
 | `GET` | `/habits/stats` | Get stats overview for all habits |
+
+### Cache Management
+
+| Method | Route | Description | Auth Required |
+|--------|-------|-------------|---------------|
+| `GET` | `/cache/stats` | Detailed cache statistics | Yes |
+| `POST` | `/cache/clear` | Clear all cache | Yes |
+| `DELETE` | `/cache/user/:userId` | Clear your own cache | Yes |
 
 ## Database Schema
 
@@ -160,30 +185,80 @@ CREATE TABLE check_ins (
 );
 ```
 
+## Performance & Caching
+
+### Redis Cache Layer
+
+The API implements intelligent caching for improved read performance.
+
+**Benchmarks** (EC2 t3.micro):
+- Cached response time: 2-5ms
+- Sustained load: 3.25ms avg over 100 requests
+- Cache hit rate: 97-99% under load
+
+**Cached Endpoints:**
+```bash
+GET /habits                    # 5 min TTL
+GET /habits/stats              # 5 min TTL
+GET /habits/:id/stats          # 5 min TTL
+GET /habits/:id/streak         # 5 min TTL
+GET /habits/:id/checkins       # 10 min TTL
+```
+
+**Cache Invalidation:**
+- Creating/updating/deleting habits → Clear user's cache
+- Checking in → Clear habit-specific cache
+- Smart pattern-based invalidation
+
+**Cache Monitoring:**
+```bash
+# View cache statistics
+curl https://habittrackerapi.me/metrics | jq '{
+  cache_connected,
+  cache_hits,
+  cache_misses,
+  cache_hit_rate
+}'
+
+# Health check includes cache status
+curl https://habittrackerapi.me/health
+```
+
 ## Project Structure
 
 ```
-├── app.js                  # Express app setup
+├── app.js                   # Express app setup
 ├── Dockerfile
 ├── docker-compose.yml
 ├── routes/
-│   ├── auth.js             # Authentication endpoints
-│   ├── habits.js           # Habit CRUD endpoints
-│   ├── checkIns.js         # Check-in endpoints
-│   ├── health.js           # Health monitoring
-│   └── metrics.js          # Metrics endpoint
+│   ├── auth.js              # Authentication endpoints
+│   ├── habits.js            # Habit CRUD endpoints
+│   ├── checkIns.js          # Check-in endpoints
+│   ├── health.js            # Health check (DB, Redis, memory)
+│   ├── metrics.js           # Application metrics
+│   └── cache.js             # Cache management
 ├── middleware/
-│   └── auth.js             # JWT authentication middleware
+│   ├── auth.js              # JWT authentication
+│   └── cache.js             # Cache middleware + invalidation
 ├── db/
-│   └── db.js               # PostgreSQL connection
+│   ├── db.js                # PostgreSQL connection
+│   └── redis.js             # Redis connection
 ├── utils/
-│   ├── logger.js           # Winston logger setup
-│   ├── requestLogger.js    # Request logging middleware
-│   ├── streak.js           # Streak calculation logic
-│   ├── tokens.js           # JWT token utilities
-│   └── googleOAuth.js      # Google OAuth2 helper
+│   ├── cache.js             # Cache utility
+│   ├── cacheWarming.js      # Cache warming
+│   ├── cacheTTL.js          # TTL configuration
+│   ├── cacheKeys.js         # Cache key generator
+│   ├── logger.js            # Winston logger
+│   ├── requestLogger.js     # Request logging
+│   ├── streak.js            # Streak calculation
+│   ├── tokens.js            # JWT token utilities
+│   └── googleOAuth.js       # Google OAuth2
+├── scripts/
+│   ├── loadTest.js          # Load testing
+│   └── performanceReport.sh # Performance report
 └── docs/
     ├── API.md
+    ├── PERFORMANCE.md        # Caching benchmarks
     ├── schema.sql
     └── nginx.conf
 ```
@@ -193,8 +268,8 @@ CREATE TABLE check_ins (
 You need Node.js 18+ and a PostgreSQL database.
 
 ```bash
-git clone https://github.com/oltir06/habit-tracker-api.git
-cd habit-tracker-api
+git clone https://github.com/oltir06/habit-tracker.git
+cd habit-tracker
 npm install
 ```
 
@@ -209,6 +284,8 @@ JWT_REFRESH_SECRET=your-refresh-secret
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 BCRYPT_ROUNDS=10
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback

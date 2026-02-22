@@ -10,7 +10,7 @@ async function login() {
         password: 'Test123456'
     });
     accessToken = response.data.accessToken;
-    console.log('✅ Logged in');
+    console.log('[OK] Logged in');
 }
 
 // Test single endpoint
@@ -25,12 +25,12 @@ async function testEndpoint(endpoint, name) {
 
 // Run load test
 async function runLoadTest() {
-    console.log('🚀 Starting load test...\n');
+    console.log('Starting load test...\n');
 
     await login();
 
     // Test without cache (first request)
-    console.log('📊 Testing WITHOUT cache (first request):');
+    console.log('--- Testing WITHOUT cache (first request):');
     const withoutCache = [];
     withoutCache.push(await testEndpoint('/habits', 'GET /habits'));
     withoutCache.push(await testEndpoint('/habits/stats', 'GET /habits/stats'));
@@ -40,7 +40,7 @@ async function runLoadTest() {
     });
 
     // Test with cache (second request)
-    console.log('\n📊 Testing WITH cache (second request):');
+    console.log('\n--- Testing WITH cache (second request):');
     const withCache = [];
     withCache.push(await testEndpoint('/habits', 'GET /habits'));
     withCache.push(await testEndpoint('/habits/stats', 'GET /habits/stats'));
@@ -50,14 +50,14 @@ async function runLoadTest() {
     });
 
     // Calculate improvement
-    console.log('\n📈 Performance Improvement:');
+    console.log('\n--- Performance Improvement:');
     for (let i = 0; i < withoutCache.length; i++) {
         const improvement = (withoutCache[i].duration / withCache[i].duration).toFixed(1);
         console.log(`  ${withoutCache[i].name}: ${improvement}x faster`);
     }
 
     // Sustained load test
-    console.log('\n⚡ Sustained load test (100 requests):');
+    console.log('\n--- Sustained load test (100 requests):');
     const sustainedStart = Date.now();
     const promises = [];
     for (let i = 0; i < 100; i++) {
@@ -70,7 +70,7 @@ async function runLoadTest() {
 
     // Get cache stats
     const metrics = await axios.get(`${API_URL}/metrics`);
-    console.log('\n📊 Cache Statistics:');
+    console.log('\n--- Cache Statistics:');
     console.log(`  Hits: ${metrics.data.cache_hits}`);
     console.log(`  Misses: ${metrics.data.cache_misses}`);
     console.log(`  Hit Rate: ${metrics.data.cache_hit_rate}`);

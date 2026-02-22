@@ -11,13 +11,13 @@ TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
   -d '{"email":"test@example.com","password":"Test123456"}' \
   | jq -r '.accessToken')
 
-echo "✅ Authenticated"
+echo "[OK] Authenticated"
 echo ""
 
 # Clear cache
 echo "Clearing cache for baseline..."
 redis-cli FLUSHDB > /dev/null
-echo "✅ Cache cleared"
+echo "[OK] Cache cleared"
 echo ""
 
 # Test 1: Without cache
