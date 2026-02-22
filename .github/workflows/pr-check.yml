@@ -43,6 +43,12 @@ jobs:
         with:
           node-version: '18'
       - run: npm ci
+      - name: Create test database schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/habits_test
+        run: |
+          npm install -g pg
+          psql $DATABASE_URL -f docs/schema.sql
       - run: npm test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/habits_test
