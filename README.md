@@ -1,14 +1,9 @@
 # Habit Tracker API
 
 ![Test Status](https://github.com/oltir06/habit-tracker/actions/workflows/test.yml/badge.svg)
-![Build Status](https://github.com/oltir06/habit-tracker/actions/workflows/build.yml/badge.svg)
-![Deployment Status](https://github.com/oltir06/habit-tracker/actions/workflows/deploy.yml/badge.svg)
 [![API Status](https://img.shields.io/website?url=https%3A%2F%2Fhabittrackerapi.me)](https://habittrackerapi.me)
 
 REST API for tracking daily habits and streaks. I built this to get more comfortable with backend development, working with databases, and deploying to AWS.
-
-[![API Status](https://img.shields.io/website?url=https%3A%2F%2Fhabittrackerapi.me)](https://habittrackerapi.me)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🔗 **Live API:** https://habittrackerapi.me  
 📊 **Health Check:** https://habittrackerapi.me/health  

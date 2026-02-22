@@ -2,7 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -26,8 +26,8 @@ jobs:
             
             # Pull latest code
             git fetch --all
-            git checkout main
-            git pull origin main
+            git checkout master
+            git pull origin master
             
             # Create .env if not exists
             if [ ! -f .env ]; then
