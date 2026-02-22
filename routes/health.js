@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
+const redis = require('../db/redis');
 const logger = require('../utils/logger');
 
 // GET /health - Comprehensive health check
@@ -12,9 +13,10 @@ router.get('/', async (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || 'development',
-        version: '1.3.0',
+        version: '1.4.0',
         checks: {
             database: 'unknown',
+            cache: 'unknown',
             memory: 'unknown'
         }
     };
@@ -31,7 +33,7 @@ router.get('/', async (req, res) => {
             status: 'healthy',
             responseTime: `${dbDuration}ms`,
             time: result.rows[0].time,
-            version: result.rows[0].version.split(' ')[0] // Just "PostgreSQL 14.x"
+            version: result.rows[0].version.split(' ')[0]
         };
     } catch (error) {
         allHealthy = false;
@@ -42,10 +44,31 @@ router.get('/', async (req, res) => {
         logger.error('Database health check failed', { error: error.message });
     }
 
-    // 2. Memory Health Check
+    // 2. Redis Cache Health Check
+    try {
+        const cacheStart = Date.now();
+        await redis.ping();
+        const cacheDuration = Date.now() - cacheStart;
+
+        const dbSize = await redis.dbsize();
+
+        healthCheck.checks.cache = {
+            status: 'healthy',
+            responseTime: `${cacheDuration}ms`,
+            keys: dbSize,
+            connected: redis.status === 'ready'
+        };
+    } catch (error) {
+        allHealthy = false;
+        healthCheck.checks.cache = {
+            status: 'unhealthy',
+            error: error.message
+        };
+        logger.error('Cache health check failed', { error: error.message });
+    }
+
+    // 3. Memory Health Check
     const memUsage = process.memoryUsage();
-    // Alert if heap used is over a hard limit (e.g. 250MB) rather than a percentage of heapTotal.
-    // V8 lazily garbage collects, so heapUsed approaching heapTotal is normal behavior.
     const memHealthy = (memUsage.heapUsed / 1024 / 1024) < 250;
 
     healthCheck.checks.memory = {
@@ -61,13 +84,11 @@ router.get('/', async (req, res) => {
         logger.warn('Memory usage high', healthCheck.checks.memory);
     }
 
-    // 3. Overall Status
+    // 4. Overall Status
     healthCheck.status = allHealthy ? 'OK' : 'DEGRADED';
     healthCheck.responseTime = `${Date.now() - startTime}ms`;
 
-    // Return appropriate status code
     const statusCode = allHealthy ? 200 : 503;
-
     res.status(statusCode).json(healthCheck);
 });
 
