@@ -21,6 +21,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          key_type: rsa
           script: |
             cd ~/habit-tracker
             
@@ -74,11 +75,4 @@ jobs:
             
             echo "Deployment successful!"
 
-      - name: Send deployment notification
-        if: always()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'Deployment to EC2: ${{ job.status }}'
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
