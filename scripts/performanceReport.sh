@@ -6,7 +6,7 @@ echo ""
 
 # Get token
 echo "Logging in..."
-TOKEN=$(curl -s -X POST http://localhost/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"Test123456"}' \
   | jq -r '.accessToken')
@@ -24,12 +24,12 @@ echo ""
 echo "=== Test 1: WITHOUT Cache (First Request) ==="
 echo "GET /habits:"
 time curl -s -o /dev/null -w "Time: %{time_total}s\n" \
-  http://localhost/habits \
+  http://localhost:3000/habits \
   -H "Authorization: Bearer $TOKEN"
 
 echo "GET /habits/stats:"
 time curl -s -o /dev/null -w "Time: %{time_total}s\n" \
-  http://localhost/habits/stats \
+  http://localhost:3000/habits/stats \
   -H "Authorization: Bearer $TOKEN"
 
 echo ""
@@ -38,19 +38,19 @@ echo ""
 echo "=== Test 2: WITH Cache (Second Request) ==="
 echo "GET /habits:"
 time curl -s -o /dev/null -w "Time: %{time_total}s\n" \
-  http://localhost/habits \
+  http://localhost:3000/habits \
   -H "Authorization: Bearer $TOKEN"
 
 echo "GET /habits/stats:"
 time curl -s -o /dev/null -w "Time: %{time_total}s\n" \
-  http://localhost/habits/stats \
+  http://localhost:3000/habits/stats \
   -H "Authorization: Bearer $TOKEN"
 
 echo ""
 
 # Get metrics
 echo "=== Cache Metrics ==="
-curl -s http://localhost/metrics | jq '{
+curl -s http://localhost:3000/metrics | jq '{
   cache_connected,
   cache_hits,
   cache_misses,

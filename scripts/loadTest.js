@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const API_URL = 'http://localhost';
+const API_URL = 'http://localhost:3000';
 let accessToken = '';
 
 // Login and get token
