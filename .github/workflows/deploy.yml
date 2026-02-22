@@ -1,0 +1,85 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/habit-tracker
+            
+            # Pull latest code
+            git fetch --all
+            git checkout main
+            git pull origin main
+            
+            # Create .env if not exists
+            if [ ! -f .env ]; then
+              cat > .env << EOF
+            PORT=3000
+            NODE_ENV=production
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            AWS_REGION=eu-north-1
+            LOG_LEVEL=info
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_EXPIRES_IN=15m
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            JWT_REFRESH_EXPIRES_IN=7d
+            BCRYPT_ROUNDS=10
+            REDIS_HOST=${{ secrets.REDIS_HOST }}
+            REDIS_PORT=6379
+            EOF
+            fi
+            
+            # Stop existing container
+            docker stop habit-tracker-api || true
+            docker rm habit-tracker-api || true
+            
+            # Pull latest image from Docker Hub
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/habit-tracker-api:main
+            
+            # Run new container
+            docker run -d \
+              --network host \
+              --env-file .env \
+              --memory="256m" \
+              --restart unless-stopped \
+              --name habit-tracker-api \
+              ${{ secrets.DOCKERHUB_USERNAME }}/habit-tracker-api:main
+            
+            # Wait for container to start
+            sleep 5
+            
+            # Check if running
+            docker ps | grep habit-tracker-api
+            
+            # Test health endpoint
+            curl -f http://localhost/health || exit 1
+            
+            echo "Deployment successful!"
+
+      - name: Send deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Deployment to EC2: ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,49 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to rollback to (e.g., v1.3.0)'
+        required: true
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Rollback on EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/habit-tracker
+            
+            # Checkout specified version
+            git fetch --all --tags
+            git checkout tags/${{ github.event.inputs.version }}
+            
+            # Stop existing container
+            docker stop habit-tracker-api || true
+            docker rm habit-tracker-api || true
+            
+            # Pull specified version image
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/habit-tracker-api:${{ github.event.inputs.version }}
+            
+            # Run container with specified version
+            docker run -d \
+              --network host \
+              --env-file .env \
+              --memory="256m" \
+              --restart unless-stopped \
+              --name habit-tracker-api \
+              ${{ secrets.DOCKERHUB_USERNAME }}/habit-tracker-api:${{ github.event.inputs.version }}
+            
+            # Wait and verify
+            sleep 5
+            docker ps | grep habit-tracker-api
+            curl -f http://localhost/health || exit 1
+            
+            echo "Rollback to ${{ github.event.inputs.version }} successful!"
