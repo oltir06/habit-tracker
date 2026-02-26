@@ -2,3 +2,9 @@ node_modules/
 .env
 *.log
 test-results/
+
+# Terraform
+terraform.tfvars
+*.tfstate*
+.terraform/
+.terraform.lock.hcl
