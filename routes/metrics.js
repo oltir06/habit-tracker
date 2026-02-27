@@ -44,4 +44,40 @@ router.get('/', async (req, res) => {
     }
 });
 
+const {
+    register,
+    usersTotal,
+    habitsTotal,
+    checkInsTotal,
+    checkInsToday,
+    dbConnectionsActive
+} = require('../utils/metrics');
+
+// NEW: Prometheus metrics endpoint
+router.get('/prometheus', async (req, res) => {
+    try {
+        // Update business metrics before scrape
+        const usersResult = await db.query('SELECT COUNT(*) as count FROM users');
+        const habitsResult = await db.query('SELECT COUNT(*) as count FROM habits');
+        const checkInsResult = await db.query('SELECT COUNT(*) as count FROM check_ins');
+        const todayCheckIns = await db.query(
+            "SELECT COUNT(*) as count FROM check_ins WHERE date = CURRENT_DATE"
+        );
+
+        usersTotal.set(parseInt(usersResult.rows[0].count));
+        habitsTotal.set(parseInt(habitsResult.rows[0].count));
+        checkInsTotal.set(parseInt(checkInsResult.rows[0].count));
+        checkInsToday.set(parseInt(todayCheckIns.rows[0].count));
+
+        // Get active connections (approximate)
+        dbConnectionsActive.set(db?.totalCount ?? 0);
+
+        // Return Prometheus format
+        res.set('Content-Type', register.contentType);
+        res.end(await register.metrics());
+    } catch (error) {
+        res.status(500).end(error.message);
+    }
+});
+
 module.exports = router;
