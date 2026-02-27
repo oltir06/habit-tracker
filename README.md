@@ -19,6 +19,8 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 - AWS EC2 + RDS
 - Let's Encrypt SSL
 - Winston logging + CloudWatch
+- Prometheus + Grafana (metrics & dashboards)
+- Alertmanager (alerting)
 - UptimeRobot monitoring
 
 ## What it does
@@ -41,7 +43,10 @@ REST API for tracking daily habits and streaks. I built this to get more comfort
 
 **Operations**
 - Health check (database, cache, memory)
-- Application metrics endpoint
+- Application metrics endpoint (JSON + Prometheus format)
+- Prometheus scraping every 15s with custom business metrics
+- Grafana dashboards for API, Redis, and system metrics
+- Alertmanager with email alerts (APIDown, LowDiskSpace, HighErrorRate)
 - Structured JSON logging to CloudWatch
 - HTTPS with auto-renewed SSL certificates
 - Rate limiting (100 req/min per IP)
@@ -119,7 +124,8 @@ curl https://habittrackerapi.me/auth/google
 |--------|-------|-------------|---------------|
 | `GET` | `/` | API info and available endpoints | No |
 | `GET` | `/health` | Health check (database, cache, memory) | No |
-| `GET` | `/metrics` | Application metrics | No |
+| `GET` | `/metrics` | Application metrics (JSON) | No |
+| `GET` | `/metrics/prometheus` | Prometheus-format metrics | No |
 
 ### Habits
 
@@ -235,7 +241,7 @@ curl https://habittrackerapi.me/health
 │   ├── habits.js            # Habit CRUD endpoints
 │   ├── checkIns.js          # Check-in endpoints
 │   ├── health.js            # Health check (DB, Redis, memory)
-│   ├── metrics.js           # Application metrics
+│   ├── metrics.js           # JSON + Prometheus metrics
 │   └── cache.js             # Cache management
 ├── middleware/
 │   ├── auth.js              # JWT authentication
@@ -245,6 +251,7 @@ curl https://habittrackerapi.me/health
 │   └── redis.js             # Redis connection
 ├── utils/
 │   ├── cache.js             # Cache utility
+│   ├── metrics.js           # prom-client metric definitions
 │   ├── cacheWarming.js      # Cache warming
 │   ├── cacheTTL.js          # TTL configuration
 │   ├── cacheKeys.js         # Cache key generator
@@ -253,6 +260,16 @@ curl https://habittrackerapi.me/health
 │   ├── streak.js            # Streak calculation
 │   ├── tokens.js            # JWT token utilities
 │   └── googleOAuth.js       # Google OAuth2
+├── monitoring/
+│   ├── docker-compose.yml   # Prometheus, Grafana, Alertmanager, exporters
+│   ├── prometheus/
+│   │   ├── prometheus.yml   # Scrape config
+│   │   └── alerts.yml       # Alert rules
+│   ├── grafana/
+│   │   ├── provisioning/    # Auto-provisioned datasources & dashboards
+│   │   └── dashboards/      # Dashboard JSON files
+│   └── alertmanager/
+│       └── alertmanager.yml # Alert routing & email config
 ├── scripts/
 │   ├── loadTest.js          # Load testing
 │   └── performanceReport.sh # Performance report
@@ -314,6 +331,8 @@ Running on an EC2 t3.micro instance with an RDS PostgreSQL database (db.t4g.micr
 - Nginx handles SSL termination, rate limiting, and security headers
 - Logs go to CloudWatch as structured JSON
 - UptimeRobot checks `/health` every 5 minutes with email alerts on downtime
+- Prometheus scrapes metrics every 15s; Grafana dashboards available at `/grafana`
+- Alertmanager sends email alerts for critical events (API down, high error rate, low disk)
 
 ## Security
 
