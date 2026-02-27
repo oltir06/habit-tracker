@@ -16,6 +16,8 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.external-url=/prometheus/'
+      - '--web.route-prefix=/'
     ports:
       - "9090:9090"
     networks:
@@ -33,6 +35,9 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=habittrackerapi.me
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     ports:
       - "3001:3000"
     networks:
@@ -76,6 +81,7 @@ volumes:
   prometheus-data:
   grafana-data:
   alertmanager-data:
+
 
 networks:
   monitoring:
