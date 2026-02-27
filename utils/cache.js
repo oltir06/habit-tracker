@@ -1,5 +1,7 @@
 const redis = require('../db/redis');
 const logger = require('./logger');
+const { cacheHits: prometheusCacheHits, cacheMisses: prometheusCacheMisses, cacheHitRate } = require('./metrics');
+
 
 // In-memory counters for cache statistics
 let cacheHits = 0;
@@ -15,10 +17,22 @@ const get = async (key) => {
         const value = await redis.get(key);
         if (value) {
             cacheHits++;
+            prometheusCacheHits.inc();
+
+            // Update hit rate
+            const total = cacheHits + cacheMisses;
+            cacheHitRate.set(cacheHits / total);
+
             logger.info('Cache hit', { key, totalHits: cacheHits });
             return JSON.parse(value);
         }
         cacheMisses++;
+        prometheusCacheMisses.inc();
+
+        // Update hit rate
+        const total = cacheHits + cacheMisses;
+        cacheHitRate.set(cacheHits / total);
+
         logger.info('Cache miss', { key, totalMisses: cacheMisses });
         return null;
     } catch (error) {

@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const logger = require('./utils/logger');
 const requestLogger = require('./utils/requestLogger');
+const metricsMiddleware = require('./middleware/metricsMiddleware');
 const { cleanupExpiredTokens } = require('./utils/tokens');
 const { warmAllActiveUsersCache } = require('./utils/cacheWarming');
 
@@ -11,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 app.use(requestLogger);
 
 // Root endpoint
