@@ -77,6 +77,19 @@ services:
     networks:
       - monitoring
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://host.docker.internal:6379
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9121:9121"
+    networks:
+      - monitoring
+
 volumes:
   prometheus-data:
   grafana-data:

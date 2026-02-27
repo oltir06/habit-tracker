@@ -70,7 +70,7 @@ router.get('/prometheus', async (req, res) => {
         checkInsToday.set(parseInt(todayCheckIns.rows[0].count));
 
         // Get active connections (approximate)
-        dbConnectionsActive.set(db.totalCount || 0);
+        dbConnectionsActive.set(db?.totalCount ?? 0);
 
         // Return Prometheus format
         res.set('Content-Type', register.contentType);
