@@ -1,0 +1,89 @@
+groups:
+  - name: api_alerts
+    interval: 30s
+    rules:
+      # API is down
+      - alert: APIDown
+        expr: up{job="habit-tracker-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API is down"
+          description: "Habit Tracker API has been down for more than 1 minute"
+
+      # High response time
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, sum(rate(habit_tracker_http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time is {{ $value }}s"
+
+      # High error rate
+      - alert: HighErrorRate
+        expr: (sum(rate(habit_tracker_http_requests_total{status=~"5.."}[5m])) / sum(rate(habit_tracker_http_requests_total[5m]))) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      # Cache hit rate low
+      - alert: LowCacheHitRate
+        expr: habit_tracker_cache_hit_rate < 0.7
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}"
+
+  - name: system_alerts
+    interval: 30s
+    rules:
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}%"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}%"
+
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is {{ $value }}% free"
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # Database connection pool exhausted
+      - alert: DatabaseConnectionPoolHigh
+        expr: habit_tracker_db_connections_active / habit_tracker_db_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "{{ $value | humanizePercentage }} of connections in use"

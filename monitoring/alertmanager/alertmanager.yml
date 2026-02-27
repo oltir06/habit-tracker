@@ -1,0 +1,51 @@
+global:
+  resolve_timeout: 5m
+  smtp_from: 'alerts@habittrackerapi.me'
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_auth_username: 'your-email@gmail.com'
+  smtp_auth_password: 'your-app-password'
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'email-notifications'
+  
+  routes:
+    - match:
+        severity: critical
+      receiver: 'email-critical'
+      continue: true
+    
+    - match:
+        severity: warning
+      receiver: 'email-warnings'
+
+receivers:
+  - name: 'email-notifications'
+    email_configs:
+      - to: 'olti.rexhepaj@web.de'
+        headers:
+          Subject: 'Habit Tracker API Alert'
+
+  - name: 'email-critical'
+    email_configs:
+      - to: 'olti.rexhepaj@web.de'
+        headers:
+          Subject: '🚨 CRITICAL: Habit Tracker API Alert'
+        send_resolved: true
+
+  - name: 'email-warnings'
+    email_configs:
+      - to: 'olti.rexhepaj@web.de'
+        headers:
+          Subject: '⚠️ WARNING: Habit Tracker API Alert'
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
