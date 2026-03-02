@@ -62,7 +62,7 @@ register.registerMetric(dbConnectionsActive);
 const dbConnectionsMax = new client.Gauge({
   name: 'habit_tracker_db_connections_max',
   help: 'Maximum number of database connections',
-  async collect() {
+  collect() {
     this.set(20); // pg pool default
   }
 });
@@ -111,6 +111,7 @@ module.exports = {
   cacheMisses,
   cacheHitRate,
   dbConnectionsActive,
+  dbConnectionsMax,
   dbQueryDuration,
   usersTotal,
   habitsTotal,
