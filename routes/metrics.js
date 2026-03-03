@@ -2,17 +2,24 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const cache = require('../utils/cache');
+const {
+    register,
+    usersTotal,
+    habitsTotal,
+    checkInsTotal,
+    checkInsToday,
+    dbConnectionsActive
+} = require('../utils/metrics');
 
-// GET /metrics - Prometheus-style metrics
+// GET /metrics - JSON metrics
 router.get('/', async (req, res) => {
     try {
-        // Get database stats
-        const habitsResult = await db.query('SELECT COUNT(*) as count FROM habits');
-        const checkInsResult = await db.query('SELECT COUNT(*) as count FROM check_ins');
-        const usersResult = await db.query('SELECT COUNT(*) as count FROM users');
-
-        // Get cache stats
-        const cacheStats = await cache.stats();
+        const [habitsResult, checkInsResult, usersResult, cacheStats] = await Promise.all([
+            db.query('SELECT COUNT(*) as count FROM habits'),
+            db.query('SELECT COUNT(*) as count FROM check_ins'),
+            db.query('SELECT COUNT(*) as count FROM users'),
+            cache.stats()
+        ]);
 
         const metrics = {
             // Process metrics
@@ -44,25 +51,15 @@ router.get('/', async (req, res) => {
     }
 });
 
-const {
-    register,
-    usersTotal,
-    habitsTotal,
-    checkInsTotal,
-    checkInsToday,
-    dbConnectionsActive
-} = require('../utils/metrics');
-
-// NEW: Prometheus metrics endpoint
+// GET /metrics/prometheus - Prometheus-format metrics
 router.get('/prometheus', async (req, res) => {
     try {
-        // Update business metrics before scrape
-        const usersResult = await db.query('SELECT COUNT(*) as count FROM users');
-        const habitsResult = await db.query('SELECT COUNT(*) as count FROM habits');
-        const checkInsResult = await db.query('SELECT COUNT(*) as count FROM check_ins');
-        const todayCheckIns = await db.query(
-            "SELECT COUNT(*) as count FROM check_ins WHERE date = CURRENT_DATE"
-        );
+        const [usersResult, habitsResult, checkInsResult, todayCheckIns] = await Promise.all([
+            db.query('SELECT COUNT(*) as count FROM users'),
+            db.query('SELECT COUNT(*) as count FROM habits'),
+            db.query('SELECT COUNT(*) as count FROM check_ins'),
+            db.query("SELECT COUNT(*) as count FROM check_ins WHERE date = CURRENT_DATE")
+        ]);
 
         usersTotal.set(parseInt(usersResult.rows[0].count));
         habitsTotal.set(parseInt(habitsResult.rows[0].count));

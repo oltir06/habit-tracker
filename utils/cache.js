@@ -7,6 +7,11 @@ const { cacheHits: prometheusCacheHits, cacheMisses: prometheusCacheMisses, cach
 let cacheHits = 0;
 let cacheMisses = 0;
 
+const updateHitRate = () => {
+    const total = cacheHits + cacheMisses;
+    cacheHitRate.set(cacheHits / total);
+};
+
 /**
  * Get value from cache
  * @param {string} key - Cache key
@@ -18,21 +23,13 @@ const get = async (key) => {
         if (value) {
             cacheHits++;
             prometheusCacheHits.inc();
-
-            // Update hit rate
-            const total = cacheHits + cacheMisses;
-            cacheHitRate.set(cacheHits / total);
-
+            updateHitRate();
             logger.info('Cache hit', { key, totalHits: cacheHits });
             return JSON.parse(value);
         }
         cacheMisses++;
         prometheusCacheMisses.inc();
-
-        // Update hit rate
-        const total = cacheHits + cacheMisses;
-        cacheHitRate.set(cacheHits / total);
-
+        updateHitRate();
         logger.info('Cache miss', { key, totalMisses: cacheMisses });
         return null;
     } catch (error) {
@@ -116,9 +113,11 @@ const flush = async () => {
  */
 const stats = async () => {
     try {
-        const info = await redis.info('stats');
-        const memory = await redis.info('memory');
-        const dbSize = await redis.dbsize();
+        const [info, memory, dbSize] = await Promise.all([
+            redis.info('stats'),
+            redis.info('memory'),
+            redis.dbsize()
+        ]);
 
         const totalRequests = cacheHits + cacheMisses;
         const hitRate = totalRequests > 0 ? (cacheHits / totalRequests * 100).toFixed(2) : 0;
