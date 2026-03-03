@@ -19,7 +19,7 @@ app.use(requestLogger);
 app.get('/', (req, res) => {
   res.json({
     name: 'Habit Tracker API',
-    version: '1.7.0',
+    version: '2.0.0',
     endpoints: {
       health: 'https://habittrackerapi.me/health',
       metrics: 'https://habittrackerapi.me/metrics',

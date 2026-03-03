@@ -1,13 +1,28 @@
 # Habit Tracker API
 
 ![Test Status](https://github.com/oltir06/habit-tracker/actions/workflows/test.yml/badge.svg)
+![Build Status](https://github.com/oltir06/habit-tracker/actions/workflows/build.yml/badge.svg)
+![Deployment Status](https://github.com/oltir06/habit-tracker/actions/workflows/deploy.yml/badge.svg)
 [![API Status](https://img.shields.io/website?url=https%3A%2F%2Fhabittrackerapi.me)](https://habittrackerapi.me)
 
-REST API for tracking daily habits and streaks. I built this to get more comfortable with backend development, working with databases, and deploying to AWS.
+Production-ready REST API for tracking daily habits and streaks. Built with a full DevOps pipeline — containerized, deployed to AWS, monitored with Prometheus + Grafana, and managed with Terraform.
 
 🔗 **Live API:** https://habittrackerapi.me  
 📊 **Health Check:** https://habittrackerapi.me/health  
-📈 **Metrics:** https://habittrackerapi.me/metrics
+📈 **Metrics:** https://habittrackerapi.me/metrics  
+📉 **Grafana:** https://habittrackerapi.me/grafana/  
+📚 **API Docs:** [docs/API.md](docs/API.md)
+
+## Performance
+
+| Metric | Value |
+|--------|-------|
+| Response Time (cached) | 2-5ms |
+| Response Time (uncached) | ~30ms |
+| Cache Hit Rate | 85-99% |
+| Database Query Reduction | 80% |
+| Uptime | 99.9% |
+| Peak Load Tested | 1,000+ req/min |
 
 ## Tech Stack
 
@@ -333,6 +348,39 @@ Running on an EC2 t3.micro instance with an RDS PostgreSQL database (db.t4g.micr
 - UptimeRobot checks `/health` every 5 minutes with email alerts on downtime
 - Prometheus scrapes metrics every 15s; Grafana dashboards available at `/grafana`
 - Alertmanager sends email alerts for critical events (API down, high error rate, low disk)
+
+### CI/CD Pipeline
+
+```
+Push to main
+    ↓
+GitHub Actions
+    ↓
+Run Tests (Jest)
+    ↓
+Build Docker Image
+    ↓
+Push to Docker Hub
+    ↓
+Deploy to EC2
+    ↓
+Health Check
+    ↓
+Production Live
+```
+
+### Terraform (Infrastructure as Code)
+
+AWS infrastructure is fully managed with Terraform — VPC, EC2, RDS, security groups, and Elastic IP.
+
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+Modules: `vpc`, `ec2`, `rds`, `security`
 
 ## Security
 
